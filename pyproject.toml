@@ -1,0 +1,39 @@
+[project]
+name = "agent"
+version = "0.1.0"
+description = "MVP conversational AI agent with FastAPI, Deep Agents, Streamlit, STT and TTS"
+readme = "README.md"
+authors = [
+    { name = "Michael Nieto", email = "michael.nieto@globant.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "deepagents==0.6.7",
+    "fastapi==0.136.3",
+    "faster-whisper>=1.2.1",
+    "httpx>=0.28.1",
+    "kokoro-onnx>=0.5.0",
+    "langchain-openrouter>=0.2.3",
+    "langgraph-checkpoint-sqlite>=3.1.0",
+    "onnxruntime>=1.26.0",
+    "pydantic-settings>=2.14.1",
+    "pydub>=0.25.1",
+    "python-multipart>=0.0.30",
+    "sqlalchemy>=2.0.44",
+    "streamlit==1.58.0",
+    "uvicorn>=0.48.0",
+]
+
+[project.scripts]
+agent-api = "app.main:run"
+agent-streamlit = "streamlit_app.app:main"
+
+[build-system]
+requires = ["uv_build>=0.9.28,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.4.0",
+]
