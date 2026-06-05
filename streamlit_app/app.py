@@ -1,5 +1,13 @@
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
+# Add project root and src to path so we can import app and streamlit_app modules
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+sys.path.insert(0, str(project_root / "src"))
+
 import streamlit as st
 
 from app.config import get_settings
@@ -12,7 +20,9 @@ def main() -> None:
     settings = get_settings()
     client = ApiClient(settings.streamlit_api_base_url)
 
-    st.set_page_config(page_title="Conversational Agent MVP", page_icon="AI", layout="wide")
+    st.set_page_config(
+        page_title="Conversational Agent MVP", page_icon="AI", layout="wide"
+    )
     st.title("Conversational Agent MVP")
     st.caption("Chat por texto o audio con STT y TTS locales")
 
@@ -27,7 +37,9 @@ def main() -> None:
     audio_file = st.audio_input("Graba un mensaje de voz")
 
     if audio_file is not None:
-        transcription = client.transcribe_audio(audio_file.getvalue(), filename=audio_file.name or "recording.wav")
+        transcription = client.transcribe_audio(
+            audio_file.getvalue(), filename=audio_file.name or "recording.wav"
+        )
         transcribed_text = transcription.get("text", "").strip()
         if transcribed_text:
             _send_prompt(client, transcribed_text)
