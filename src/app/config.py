@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     stt_compute_type: str = Field(default="int8", alias="STT_COMPUTE_TYPE")
 
     tts_device: str = Field(default="cpu", alias="TTS_DEVICE")
-    tts_voice: str = Field(default="af_heart", alias="TTS_VOICE")
+    tts_voice: str = Field(default="af", alias="TTS_VOICE")
     tts_output_format: str = Field(default="mp3", alias="TTS_OUTPUT_FORMAT")
     tts_lang: str = Field(default="en-us", alias="TTS_LANG")
 
