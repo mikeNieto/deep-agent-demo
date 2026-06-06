@@ -50,6 +50,16 @@ class Settings(BaseSettings):
     tts_language: str = Field(default="en-US", alias="TTS_LANGUAGE")
     tts_timeout: float = Field(default=180.0, alias="TTS_TIMEOUT")
 
+    # OpenRouter multimodal audio agent settings
+    openrouter_audio_model: str = Field(
+        default="openai/gpt-audio-mini",
+        alias="OPENROUTER_AUDIO_MODEL",
+    )
+    openrouter_audio_voice: str = Field(
+        default="alloy",
+        alias="OPENROUTER_AUDIO_VOICE",
+    )
+
     streamlit_api_base_url: str = Field(
         default="http://localhost:8000",
         alias="STREAMLIT_API_BASE_URL",
