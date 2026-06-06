@@ -34,18 +34,37 @@ def main() -> None:
         st.write(f"User ID: `{st.session_state.user_id}`")
 
     prompt = st.chat_input("Escribe tu mensaje")
-    audio_file = st.audio_input("Graba un mensaje de voz")
-
-    if audio_file is not None:
-        transcription = client.transcribe_audio(
-            audio_file.getvalue(), filename=audio_file.name or "recording.wav"
-        )
-        transcribed_text = transcription.get("text", "").strip()
-        if transcribed_text:
-            _send_prompt(client, transcribed_text)
 
     if prompt:
         _send_prompt(client, prompt)
+
+    audio_file = st.audio_input("Graba un mensaje de voz")
+    if audio_file is not None:
+        audio_bytes = audio_file.getvalue()
+        # Check if this is a new audio file
+        if audio_bytes != st.session_state.last_audio_bytes:
+            st.session_state.last_audio_bytes = audio_bytes
+            with st.spinner("Transcribiendo audio..."):
+                transcription = client.transcribe_audio(
+                    audio_bytes, filename=audio_file.name or "recording.wav"
+                )
+                st.session_state.pending_audio_text = transcription.get(
+                    "text", ""
+                ).strip()
+
+    st.divider()
+
+    # Show transcribed text and send button
+    if st.session_state.pending_audio_text:
+        col1, col2 = st.columns([7, 1])
+        with col1:
+            st.info(f"📝 Transcrito: {st.session_state.pending_audio_text}")
+        with col2:
+            if st.button("Enviar", key="send_audio"):
+                _send_prompt(client, st.session_state.pending_audio_text)
+                st.session_state.pending_audio_text = None
+                st.session_state.last_audio_bytes = None
+                st.rerun()
 
 
 def _send_prompt(client: ApiClient, prompt: str) -> None:

@@ -45,10 +45,10 @@ class Settings(BaseSettings):
     stt_device: str = Field(default="cpu", alias="STT_DEVICE")
     stt_compute_type: str = Field(default="int8", alias="STT_COMPUTE_TYPE")
 
-    tts_device: str = Field(default="cpu", alias="TTS_DEVICE")
-    tts_voice: str = Field(default="af", alias="TTS_VOICE")
-    tts_output_format: str = Field(default="mp3", alias="TTS_OUTPUT_FORMAT")
-    tts_lang: str = Field(default="en-us", alias="TTS_LANG")
+    tts_model: str = Field(default="hexgrad/kokoro-82m", alias="TTS_MODEL")
+    tts_voice: str = Field(default="ef_dora", alias="TTS_VOICE")
+    tts_language: str = Field(default="en-US", alias="TTS_LANGUAGE")
+    tts_timeout: float = Field(default=180.0, alias="TTS_TIMEOUT")
 
     streamlit_api_base_url: str = Field(
         default="http://localhost:8000",

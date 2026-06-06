@@ -18,3 +18,7 @@ def ensure_session_state() -> None:
         st.session_state.user_id = generate_id("user")
     if "messages" not in st.session_state:
         st.session_state.messages = []
+    if "pending_audio_text" not in st.session_state:
+        st.session_state.pending_audio_text = None
+    if "last_audio_bytes" not in st.session_state:
+        st.session_state.last_audio_bytes = None

@@ -1,6 +1,11 @@
+import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 
+from app.schemas.chat import ChatMessageRequest
+from app.services.chat_service import ChatService
 from app.services.conversation_service import ConversationService
+from app.services.tts_service import TTSServiceError
 
 
 def test_conversation_service_stores_messages() -> None:
@@ -13,3 +18,40 @@ def test_conversation_service_stores_messages() -> None:
 
 def test_data_directories_exist() -> None:
     assert Path("data").exists()
+
+
+def test_chat_service_handles_tts_errors_without_failing() -> None:
+    class DummyAgentGraph:
+        async def ainvoke(self, *args, **kwargs):
+            return {
+                "messages": [
+                    SimpleNamespace(
+                        content="Hello from the agent",
+                        response_metadata={"model": "test-model"},
+                    )
+                ]
+            }
+
+    class FailingTTSService:
+        def synthesize_to_mp3(self, text: str, voice: str | None = None):
+            raise TTSServiceError("simulated provider timeout")
+
+    chat_service = ChatService(
+        agent_graph=DummyAgentGraph(),
+        conversation_service=ConversationService(),
+        tts_service=FailingTTSService(),
+    )
+
+    payload = ChatMessageRequest(
+        user_id="user-1",
+        thread_id="thread-1",
+        message="Say something",
+        response_audio=True,
+    )
+
+    response = asyncio.run(chat_service.send_message(payload))
+
+    assert response.agent_text == "Hello from the agent"
+    assert response.audio_url is None
+    assert response.audio_mime_type is None
+    assert response.resolved_model == "test-model"

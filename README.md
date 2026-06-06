@@ -1,13 +1,12 @@
 ## Conversational Agent MVP
 
-MVP de un agente conversacional con `FastAPI`, `Deep Agents`, `Streamlit`, STT local con `faster-whisper` y TTS local con `kokoro-onnx`.
+MVP de un agente conversacional con `FastAPI`, `Deep Agents`, `Streamlit`, STT local con `faster-whisper` y TTS con OpenRouter.
 
 ### Requisitos
 
 - Python 3.13
 - `uv`
-- `ffmpeg` instalado en el sistema para exportar MP3 con `pydub`
-- `OPENROUTER_API_KEY` configurada
+- `OPENROUTER_API_KEY` configurada (para chat y TTS)
 
 ### Variables de entorno
 
