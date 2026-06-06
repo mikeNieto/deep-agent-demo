@@ -23,8 +23,11 @@ async def model_health(
     tts_service: TTSService = Depends(get_tts_service),
 ) -> dict[str, str]:
     agent_graph = getattr(request.app.state, "agent_graph", None)
+    settings = getattr(request.app.state, "settings", None)
+    tts_ready = settings.openrouter_api_key is not None if settings else False
+
     return {
         "agent": "ready" if agent_graph is not None else "not_configured",
         "stt": "loaded" if stt_service.loaded else "not_loaded",
-        "tts": "loaded" if tts_service.loaded else "not_loaded",
+        "tts": "ready" if tts_ready else "not_configured",
     }
