@@ -22,3 +22,8 @@ def ensure_session_state() -> None:
         st.session_state.pending_audio_text = None
     if "last_audio_bytes" not in st.session_state:
         st.session_state.last_audio_bytes = None
+    # OpenRouter audio agent state
+    if "openrouter_messages" not in st.session_state:
+        st.session_state.openrouter_messages = []
+    if "last_openrouter_audio_bytes" not in st.session_state:
+        st.session_state.last_openrouter_audio_bytes = None
