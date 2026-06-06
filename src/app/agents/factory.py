@@ -14,7 +14,7 @@ def create_chat_model(settings: Settings) -> ChatOpenRouter:
     if not settings.openrouter_api_key:
         msg = "OPENROUTER_API_KEY must be set to initialize the chat model"
         raise ValueError(msg)
-    model_name = settings.openrouter_model.split(":", 1)[1]
+    model_name = settings.openrouter_model
     return ChatOpenRouter(
         model=model_name,
         api_key=settings.openrouter_api_key,
