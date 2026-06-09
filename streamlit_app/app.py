@@ -24,7 +24,7 @@ def main() -> None:
         page_title="Conversational Agent MVP", page_icon="AI", layout="wide"
     )
     st.title("Conversational Agent MVP")
-    st.caption("Chat por texto o audio con STT y TTS locales")
+    st.caption("Chat por texto o audio con STT y TTS")
 
     ensure_session_state()
     render_messages(st.session_state.messages)

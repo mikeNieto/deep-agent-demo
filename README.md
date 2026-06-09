@@ -1,12 +1,13 @@
 ## Conversational Agent MVP
 
-MVP de un agente conversacional con `FastAPI`, `Deep Agents`, `Streamlit`, STT local con `faster-whisper` y TTS con OpenRouter.
+MVP de un agente conversacional con `FastAPI`, `Deep Agents`, `Streamlit`, STT con `Gemini` y TTS con OpenRouter.
 
 ### Requisitos
 
 - Python 3.13
 - `uv`
 - `OPENROUTER_API_KEY` configurada (para chat y TTS)
+- `GEMINI_API_KEY` configurada (para STT)
 
 ### Variables de entorno
 
