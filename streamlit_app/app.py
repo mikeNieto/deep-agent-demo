@@ -83,7 +83,7 @@ def _send_prompt(client: ApiClient, prompt: str) -> None:
     st.session_state.messages.append(
         {
             "role": "assistant",
-            "content": response.get("agent_text", ""),
+            "content": response.get("tts_text") or response.get("agent_text", ""),
             "audio_url": audio_url,
         }
     )
