@@ -27,6 +27,7 @@ class Settings(BaseSettings):
         default="openrouter:deepseek/deepseek-v4-flash",
         alias="OPENROUTER_MODEL",
     )
+    gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
 
     checkpoint_db_path: Path = Field(
         default=DATA_DIR / "sqlite" / "checkpoints.db",
@@ -41,9 +42,7 @@ class Settings(BaseSettings):
         alias="MODELS_DIR",
     )
 
-    stt_model: str = Field(default="small", alias="STT_MODEL")
-    stt_device: str = Field(default="cpu", alias="STT_DEVICE")
-    stt_compute_type: str = Field(default="int8", alias="STT_COMPUTE_TYPE")
+    stt_model: str = Field(default="gemini-2.5-flash-lite", alias="STT_MODEL")
 
     tts_model: str = Field(default="hexgrad/kokoro-82m", alias="TTS_MODEL")
     tts_voice: str = Field(default="ef_dora", alias="TTS_VOICE")

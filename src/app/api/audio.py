@@ -9,7 +9,7 @@ from app.config import get_settings
 from app.dependencies import get_stt_service, get_tts_service
 from app.schemas.audio import AudioSynthesisRequest, AudioSynthesisResponse, AudioTranscriptionResponse
 from app.services.audio_service import save_upload
-from app.services.stt_service import STTService
+from app.services.stt_service import STTService, STTServiceError
 from app.services.tts_service import TTSService
 from app.utils.ids import generate_id
 
@@ -28,7 +28,14 @@ async def transcribe_audio(
     file.file.seek(0)
     save_upload(file.file, destination)
 
-    text, language, duration = stt_service.transcribe(destination)
+    try:
+        text, language, duration = stt_service.transcribe(
+            destination,
+            mime_type=file.content_type,
+        )
+    except STTServiceError as exc:
+        status_code = 503 if "not configured" in str(exc).lower() else 502
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
     return AudioTranscriptionResponse(text=text, language=language, duration_seconds=duration)
 
 
