@@ -42,8 +42,6 @@ class ChatService:
             content = "\n".join(str(item) for item in content)
 
         agent_text = str(content).strip()
-        self._conversation_service.append(payload.thread_id, "assistant", agent_text)
-
         resolved_model = None
         response_metadata = (
             getattr(final_message, "response_metadata", {}) if final_message else {}
@@ -55,6 +53,7 @@ class ChatService:
 
         audio_url = None
         audio_mime_type = None
+        tts_text = None
         if payload.response_audio and agent_text:
             try:
                 tts_text = self._tts_preparation_service.prepare_text(agent_text)
@@ -68,11 +67,18 @@ class ChatService:
                     e,
                 )
 
+        self._conversation_service.append(
+            payload.thread_id,
+            "assistant",
+            tts_text or agent_text,
+        )
+
         logger.info("Chat response generated for thread %s", payload.thread_id)
         return ChatMessageResponse(
             thread_id=payload.thread_id,
             user_message=payload.message,
             agent_text=agent_text,
+            tts_text=tts_text,
             audio_url=audio_url,
             audio_mime_type=audio_mime_type,
             resolved_model=resolved_model,

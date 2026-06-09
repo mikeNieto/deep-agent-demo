@@ -16,6 +16,7 @@ class ChatMessageResponse(BaseModel):
     thread_id: str
     user_message: str
     agent_text: str
+    tts_text: str | None = None
     audio_url: str | None = None
     audio_mime_type: str | None = None
     resolved_model: str | None = None
