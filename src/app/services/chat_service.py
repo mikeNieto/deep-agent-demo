@@ -4,6 +4,10 @@ import logging
 
 from app.schemas.chat import ChatMessageRequest, ChatMessageResponse
 from app.services.conversation_service import ConversationService
+from app.services.tts_preparation_service import (
+    TTSPreparationService,
+    TTSPreparationServiceError,
+)
 from app.services.tts_service import TTSService, TTSServiceError
 
 
@@ -16,10 +20,12 @@ class ChatService:
         agent_graph,
         conversation_service: ConversationService,
         tts_service: TTSService,
+        tts_preparation_service: TTSPreparationService,
     ) -> None:
         self._agent_graph = agent_graph
         self._conversation_service = conversation_service
         self._tts_service = tts_service
+        self._tts_preparation_service = tts_preparation_service
 
     async def send_message(self, payload: ChatMessageRequest) -> ChatMessageResponse:
         self._conversation_service.append(payload.thread_id, "user", payload.message)
@@ -51,10 +57,11 @@ class ChatService:
         audio_mime_type = None
         if payload.response_audio and agent_text:
             try:
-                mp3_path, _duration = self._tts_service.synthesize_to_mp3(agent_text)
+                tts_text = self._tts_preparation_service.prepare_text(agent_text)
+                mp3_path, _duration = self._tts_service.synthesize_to_mp3(tts_text)
                 audio_url = f"/api/audio/files/{mp3_path.name}"
                 audio_mime_type = "audio/mpeg"
-            except TTSServiceError as e:
+            except (TTSPreparationServiceError, TTSServiceError) as e:
                 logger.warning(
                     "TTS generation failed for thread %s: %s. Returning chat response without audio.",
                     payload.thread_id,

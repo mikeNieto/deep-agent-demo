@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     stt_model: str = Field(default="gemini-2.5-flash-lite", alias="STT_MODEL")
 
     tts_model: str = Field(default="hexgrad/kokoro-82m", alias="TTS_MODEL")
+    tts_preparation_model: str = Field(default="", alias="TTS_PREPARATION_MODEL")
     tts_voice: str = Field(default="ef_dora", alias="TTS_VOICE")
     tts_language: str = Field(default="en-US", alias="TTS_LANGUAGE")
     tts_timeout: float = Field(default=180.0, alias="TTS_TIMEOUT")
