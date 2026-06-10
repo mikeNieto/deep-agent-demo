@@ -18,7 +18,10 @@ from streamlit_app.state import ensure_session_state
 
 def main() -> None:
     settings = get_settings()
-    client = ApiClient(settings.streamlit_api_base_url)
+    client = ApiClient(
+        settings.streamlit_api_base_url,
+        timeout=settings.streamlit_api_timeout,
+    )
 
     st.set_page_config(
         page_title="Conversational Agent MVP", page_icon="AI", layout="wide"

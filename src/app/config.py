@@ -47,6 +47,10 @@ class Settings(BaseSettings):
         default="http://localhost:8000",
         alias="STREAMLIT_API_BASE_URL",
     )
+    streamlit_api_timeout: float = Field(
+        default=120.0,
+        alias="STREAMLIT_API_TIMEOUT",
+    )
 
     @property
     def app_root(self) -> Path:
