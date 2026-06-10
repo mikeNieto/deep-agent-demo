@@ -1,17 +1,17 @@
 from __future__ import annotations
 
+import base64
 import logging
-from collections.abc import Iterable
 from pathlib import Path
 
 import httpx
-from google import genai
-from google.genai import types
 
 from app.config import Settings
 
 
 logger = logging.getLogger(__name__)
+
+OPENROUTER_STT_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 DEFAULT_STT_PROMPT = (
     "You are an audio transcription and translation engine. "
@@ -41,71 +41,124 @@ class STTServiceError(RuntimeError):
 class STTService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._client: genai.Client | None = None
+        self._client = httpx.Client()
 
     @property
     def loaded(self) -> bool:
-        return bool(self._settings.gemini_api_key)
-
-    def _get_client(self) -> genai.Client:
-        if not self._settings.gemini_api_key:
-            raise STTServiceError("GEMINI_API_KEY is not configured")
-        if self._client is None:
-            logger.info("Initializing Gemini STT client with model %s", self._settings.stt_model)
-            self._client = genai.Client(
-                api_key=self._settings.gemini_api_key,
-            )
-        return self._client
+        return bool(self._settings.openrouter_api_key)
 
     def transcribe(
         self,
         file_path: Path,
         mime_type: str | None = None,
     ) -> tuple[str, str | None, float | None]:
-        client = self._get_client()
+        if not self._settings.openrouter_api_key:
+            raise STTServiceError("OPENROUTER_API_KEY is not configured")
+
         resolved_mime_type = mime_type or self._guess_mime_type(file_path)
         audio_bytes = file_path.read_bytes()
-
-        contents = [
-            types.Content(
-                role="user",
-                parts=[
-                    types.Part.from_bytes(data=audio_bytes, mime_type=resolved_mime_type),
-                    types.Part.from_text(text=DEFAULT_STT_PROMPT),
-                ],
-            )
-        ]
-        config = types.GenerateContentConfig(
-            thinking_config=types.ThinkingConfig(thinking_budget=0),
-            temperature=0,
-        )
+        audio_format = self._guess_audio_format(file_path, resolved_mime_type)
+        payload = {
+            "model": self._settings.stt_model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": DEFAULT_STT_PROMPT,
+                        },
+                        {
+                            "type": "input_audio",
+                            "input_audio": {
+                                "data": base64.b64encode(audio_bytes).decode("ascii"),
+                                "format": audio_format,
+                            },
+                        },
+                    ],
+                }
+            ],
+            "temperature": 0,
+        }
 
         try:
-            text = self._collect_text(
-                client.models.generate_content_stream(
-                    model=self._settings.stt_model,
-                    contents=contents,
-                    config=config,
-                )
+            response = self._client.post(
+                OPENROUTER_STT_URL,
+                headers={
+                    "Authorization": f"Bearer {self._settings.openrouter_api_key}",
+                    "Content-Type": "application/json",
+                    "X-OpenRouter-Title": "Deep Agent Demo",
+                },
+                json=payload,
             )
+            response.raise_for_status()
+            body = response.json()
+            text = self._extract_text(body)
+            if not text:
+                raise STTServiceError("OpenRouter STT returned an empty transcription")
+        except httpx.HTTPStatusError as exc:
+            body = exc.response.text if exc.response is not None else str(exc)
+            logger.error("OpenRouter STT request failed: %s", body)
+            raise STTServiceError(f"OpenRouter STT request failed: {body}") from exc
         except httpx.HTTPError as exc:
-            logger.error("Gemini STT request failed: %s", exc)
-            raise STTServiceError(f"Gemini STT request failed: {exc}") from exc
+            logger.error("OpenRouter STT request failed: %s", exc)
+            raise STTServiceError(f"OpenRouter STT request failed: {exc}") from exc
         except Exception as exc:
-            logger.error("Gemini STT failed: %s", exc)
-            raise STTServiceError(f"Gemini STT failed: {exc}") from exc
+            logger.error("OpenRouter STT failed: %s", exc)
+            raise STTServiceError(f"OpenRouter STT failed: {exc}") from exc
 
-        return text.strip(), None, None
+        usage = body.get("usage") if isinstance(body, dict) else None
+        duration = usage.get("seconds") if isinstance(usage, dict) else None
+        return text.strip(), None, duration
 
     @staticmethod
-    def _collect_text(chunks: Iterable[object]) -> str:
-        parts: list[str] = []
-        for chunk in chunks:
-            text = getattr(chunk, "text", None)
-            if text:
-                parts.append(text)
-        return "".join(parts)
+    def _extract_text(body: object) -> str:
+        if not isinstance(body, dict):
+            return ""
+
+        choices = body.get("choices")
+        if not isinstance(choices, list) or not choices:
+            return ""
+
+        message = choices[0].get("message") if isinstance(choices[0], dict) else None
+        if not isinstance(message, dict):
+            return ""
+
+        content = message.get("content")
+        if isinstance(content, str):
+            return content
+
+        if isinstance(content, list):
+            parts: list[str] = []
+            for item in content:
+                if not isinstance(item, dict):
+                    continue
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+            return "".join(parts)
+
+        return ""
 
     @staticmethod
     def _guess_mime_type(file_path: Path) -> str:
         return MIME_TYPE_BY_SUFFIX.get(file_path.suffix.lower(), "audio/wav")
+
+    @staticmethod
+    def _guess_audio_format(file_path: Path, mime_type: str) -> str:
+        suffix = file_path.suffix.lower().lstrip(".")
+        if suffix:
+            if suffix == "mpeg":
+                return "mp3"
+            if suffix == "oga":
+                return "ogg"
+            if suffix == "mp4":
+                return "m4a"
+            return suffix
+
+        subtype = mime_type.split("/", 1)[-1].lower()
+        if subtype == "mpeg":
+            return "mp3"
+        if subtype == "mp4":
+            return "m4a"
+        return subtype or "wav"

@@ -17,7 +17,6 @@ source = { editable = "." }
 dependencies = [
     { name = "deepagents" },
     { name = "fastapi" },
-    { name = "google-genai" },
     { name = "httpx" },
     { name = "langchain-openrouter" },
     { name = "langgraph-checkpoint-sqlite" },
@@ -38,7 +37,6 @@ dev = [
 requires-dist = [
     { name = "deepagents", specifier = "==0.6.8" },
     { name = "fastapi", specifier = "==0.136.3" },
-    { name = "google-genai", specifier = ">=2.8.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "langchain-openrouter", specifier = ">=0.2.3" },
     { name = "langgraph-checkpoint-sqlite", specifier = ">=3.1.0" },
