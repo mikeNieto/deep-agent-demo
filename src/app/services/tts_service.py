@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+import json
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from time import perf_counter
 
 import httpx
 
@@ -41,6 +43,12 @@ class TTSService:
             Tuple of (mp3_file_path, duration_in_seconds)
         """
         chosen_voice = voice or self._settings.tts_voice
+        started_at = perf_counter()
+        logger.info(
+            "TTS synthesis started voice=%s text_chars=%s",
+            chosen_voice,
+            len(text),
+        )
 
         try:
             response = self._client.post(
@@ -161,7 +169,15 @@ class TTSService:
                             raise TTSServiceError("Failed to convert PCM to MP3")
 
                     logger.info(f"Saved TTS audio to %s", mp3_path)
-                    duration = self._extract_mp3_duration(mp3_path.read_bytes())
+                    duration = self._extract_mp3_duration(mp3_path)
+                    elapsed_ms = round((perf_counter() - started_at) * 1000, 2)
+                    logger.info(
+                        "TTS synthesis completed voice=%s elapsed_ms=%s audio_duration_seconds=%s file=%s",
+                        chosen_voice,
+                        elapsed_ms,
+                        duration,
+                        mp3_path.name,
+                    )
                     return mp3_path, duration
 
                 raise TTSServiceError(
@@ -187,19 +203,59 @@ class TTSService:
         logger.info(f"Saved TTS audio to {mp3_path}")
 
         # Try to extract duration from the MP3 file
-        duration = self._extract_mp3_duration(mp3_data)
+        duration = self._extract_mp3_duration(mp3_path)
+        elapsed_ms = round((perf_counter() - started_at) * 1000, 2)
+        logger.info(
+            "TTS synthesis completed voice=%s elapsed_ms=%s audio_duration_seconds=%s file=%s",
+            chosen_voice,
+            elapsed_ms,
+            duration,
+            mp3_path.name,
+        )
 
         return mp3_path, duration
 
     @staticmethod
-    def _extract_mp3_duration(mp3_data: bytes) -> float | None:
-        """
-        Estimate MP3 duration from the audio data.
-        This is a simple estimation; accurate duration would require parsing MP3 frames.
-        """
+    def _extract_mp3_duration(file_path: Path) -> float | None:
         try:
-            # For now, return None as MP3 duration calculation requires frame-by-frame parsing
-            # OpenRouter might include this in headers, but for simplicity we'll return None
+            ffprobe_cmd = shutil.which("ffprobe")
+            if not ffprobe_cmd:
+                logger.info("ffprobe not found; cannot extract audio duration file=%s", file_path)
+                return None
+
+            result = subprocess.run(
+                [
+                    ffprobe_cmd,
+                    "-v",
+                    "error",
+                    "-show_entries",
+                    "format=duration",
+                    "-of",
+                    "json",
+                    str(file_path),
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            payload = json.loads(result.stdout)
+            duration = payload.get("format", {}).get("duration")
+            if duration in (None, ""):
+                logger.info(
+                    "ffprobe did not return audio duration file=%s stdout=%s",
+                    file_path,
+                    result.stdout.strip(),
+                )
+                return None
+
+            return round(float(duration), 3)
+        except (ValueError, json.JSONDecodeError) as exc:
+            logger.warning("Could not parse audio duration for %s: %s", file_path, exc)
+            return None
+        except subprocess.CalledProcessError as exc:
+            stderr = exc.stderr.strip() if exc.stderr else str(exc)
+            logger.warning("ffprobe failed for %s: %s", file_path, stderr)
             return None
         except Exception as e:
             logger.warning(f"Could not extract MP3 duration: {e}")
