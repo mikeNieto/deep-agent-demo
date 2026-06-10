@@ -18,16 +18,14 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_env: str = Field(default="development", alias="APP_ENV")
     api_host: str = Field(default="0.0.0.0", alias="API_HOST")
     api_port: int = Field(default=8000, alias="API_PORT")
 
     openrouter_api_key: str = Field(default="", alias="OPENROUTER_API_KEY")
-    openrouter_model: str = Field(
-        default="openrouter:deepseek/deepseek-v4-flash",
-        alias="OPENROUTER_MODEL",
+    deepagent_model: str = Field(
+        default="deepseek/deepseek-v4-flash",
+        alias="DEEPAGENT_MODEL",
     )
-    gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
 
     checkpoint_db_path: Path = Field(
         default=DATA_DIR / "sqlite" / "checkpoints.db",
@@ -37,17 +35,12 @@ class Settings(BaseSettings):
         default=DATA_DIR / "audio",
         alias="AUDIO_TEMP_DIR",
     )
-    models_dir: Path = Field(
-        default=DATA_DIR / "models",
-        alias="MODELS_DIR",
-    )
 
-    stt_model: str = Field(default="gemini-2.5-flash-lite", alias="STT_MODEL")
+    stt_model: str = Field(default="google/gemini-2.5-flash-lite", alias="STT_MODEL")
 
     tts_model: str = Field(default="hexgrad/kokoro-82m", alias="TTS_MODEL")
     tts_preparation_model: str = Field(default="", alias="TTS_PREPARATION_MODEL")
     tts_voice: str = Field(default="ef_dora", alias="TTS_VOICE")
-    tts_language: str = Field(default="en-US", alias="TTS_LANGUAGE")
     tts_timeout: float = Field(default=180.0, alias="TTS_TIMEOUT")
 
     streamlit_api_base_url: str = Field(
@@ -64,6 +57,5 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     settings = Settings()
     settings.audio_temp_dir.mkdir(parents=True, exist_ok=True)
-    settings.models_dir.mkdir(parents=True, exist_ok=True)
     settings.checkpoint_db_path.parent.mkdir(parents=True, exist_ok=True)
     return settings
