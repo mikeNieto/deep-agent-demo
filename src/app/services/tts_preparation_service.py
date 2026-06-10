@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from time import perf_counter
 
 import httpx
 
@@ -26,11 +27,19 @@ class TTSPreparationService:
         self._client = httpx.Client()
 
     def prepare_text(self, agent_response: str) -> str:
+        started_at = perf_counter()
         text = agent_response.strip()
         if not text:
+            logger.info("TTS preparation skipped because agent response is empty")
             return text
         if not self._settings.tts_preparation_model:
             raise TTSPreparationServiceError("TTS_PREPARATION_MODEL is not configured")
+
+        logger.info(
+            "TTS preparation started model=%s input_chars=%s",
+            self._settings.tts_preparation_model,
+            len(text),
+        )
 
         try:
             response = self._client.post(
@@ -97,5 +106,13 @@ class TTSPreparationService:
             raise TTSPreparationServiceError(
                 "Failed to prepare TTS text: empty model response"
             )
+
+        elapsed_ms = round((perf_counter() - started_at) * 1000, 2)
+        logger.info(
+            "TTS preparation completed model=%s elapsed_ms=%s output_chars=%s",
+            self._settings.tts_preparation_model,
+            elapsed_ms,
+            len(prepared_text),
+        )
 
         return prepared_text

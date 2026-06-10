@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+from time import perf_counter
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -15,6 +17,7 @@ from app.utils.ids import generate_id
 
 
 router = APIRouter(prefix="/api/audio", tags=["audio"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/transcribe", response_model=AudioTranscriptionResponse)
@@ -22,6 +25,12 @@ async def transcribe_audio(
     file: UploadFile = File(...),
     stt_service: STTService = Depends(get_stt_service),
 ) -> AudioTranscriptionResponse:
+    started_at = perf_counter()
+    logger.info(
+        "STT request received filename=%s content_type=%s",
+        file.filename,
+        file.content_type,
+    )
     settings = get_settings()
     suffix = Path(file.filename or "input.wav").suffix or ".wav"
     destination = settings.audio_temp_dir / f"{generate_id('upload')}{suffix}"
@@ -34,8 +43,23 @@ async def transcribe_audio(
             mime_type=file.content_type,
         )
     except STTServiceError as exc:
+        elapsed_ms = round((perf_counter() - started_at) * 1000, 2)
+        logger.warning(
+            "STT request failed filename=%s elapsed_ms=%s error=%s",
+            file.filename,
+            elapsed_ms,
+            exc,
+        )
         status_code = 503 if "not configured" in str(exc).lower() else 502
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+    elapsed_ms = round((perf_counter() - started_at) * 1000, 2)
+    logger.info(
+        "STT request completed filename=%s elapsed_ms=%s transcription_duration_seconds=%s",
+        file.filename,
+        elapsed_ms,
+        duration,
+    )
     return AudioTranscriptionResponse(text=text, language=language, duration_seconds=duration)
 
 

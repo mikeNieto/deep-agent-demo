@@ -1,11 +1,14 @@
 import asyncio
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from app.schemas.chat import ChatMessageRequest
 from app.services.chat_service import ChatService
 from app.services.conversation_service import ConversationService
+from app.services.tts_preparation_service import TTSPreparationService
 from app.services.tts_preparation_service import TTSPreparationServiceError
+from app.services.tts_service import TTSService
 from app.services.tts_service import TTSServiceError
 
 
@@ -151,3 +154,26 @@ def test_chat_service_returns_tts_text_for_display() -> None:
 
     messages = conversation_service.list_messages("thread-1")
     assert messages[-1].content == "Texto listo para TTS: Hello from the agent"
+
+
+def test_tts_service_extracts_audio_duration_with_ffprobe() -> None:
+    mock_completed = SimpleNamespace(stdout='{"format": {"duration": "1.234"}}')
+
+    with (
+        patch("app.services.tts_service.shutil.which", return_value="/usr/bin/ffprobe"),
+        patch("app.services.tts_service.subprocess.run", return_value=mock_completed),
+    ):
+        duration = TTSService._extract_mp3_duration(Path("data/audio/test.mp3"))
+
+    assert duration == 1.234
+
+
+def test_tts_preparation_service_returns_text_when_response_is_empty() -> None:
+    settings = SimpleNamespace(
+        tts_preparation_model="test-model",
+        openrouter_api_key="test-key",
+        tts_timeout=10.0,
+    )
+    service = TTSPreparationService(settings)
+
+    assert service.prepare_text("   ") == ""

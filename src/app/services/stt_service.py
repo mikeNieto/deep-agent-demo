@@ -109,6 +109,11 @@ class STTService:
 
         usage = body.get("usage") if isinstance(body, dict) else None
         duration = usage.get("seconds") if isinstance(usage, dict) else None
+        if duration is None:
+            logger.info(
+                "OpenRouter STT response did not include usage.seconds model=%s",
+                self._settings.stt_model,
+            )
         return text.strip(), None, duration
 
     @staticmethod
