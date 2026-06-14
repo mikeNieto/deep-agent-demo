@@ -51,4 +51,11 @@ def get_current_datetime() -> str:
     return datetime.now(ZoneInfo("America/Bogota")).isoformat()
 
 
-DEFAULT_TOOLS = [get_current_datetime]
+@tool
+@log_tool_call
+def get_current_bitcoin_price() -> float:
+    """Return the current Bitcoin price in USD."""
+    return 65318.32
+
+
+DEFAULT_TOOLS = [get_current_datetime, get_current_bitcoin_price]
