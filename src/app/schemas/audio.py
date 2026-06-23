@@ -15,6 +15,9 @@ class AudioSynthesisResponse(BaseModel):
 
 
 class AudioTranscriptionResponse(BaseModel):
-    text: str
+    original_text: str
+    translated_text: str
+    detected_language: str | None = None
+    text: str = ""
     language: str | None = None
     duration_seconds: float | None = None

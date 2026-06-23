@@ -38,7 +38,7 @@ async def transcribe_audio(
     save_upload(file.file, destination)
 
     try:
-        text, language, duration = stt_service.transcribe(
+        original_text, translated_text, detected_language, duration = stt_service.transcribe(
             destination,
             mime_type=file.content_type,
         )
@@ -60,7 +60,14 @@ async def transcribe_audio(
         elapsed_ms,
         duration,
     )
-    return AudioTranscriptionResponse(text=text, language=language, duration_seconds=duration)
+    return AudioTranscriptionResponse(
+        original_text=original_text,
+        translated_text=translated_text,
+        detected_language=detected_language,
+        text=translated_text,
+        language=detected_language,
+        duration_seconds=duration,
+    )
 
 
 @router.post("/synthesize", response_model=AudioSynthesisResponse)
