@@ -13,7 +13,7 @@ import streamlit as st
 from app.config import get_settings
 from streamlit_app.api_client import ApiClient
 from streamlit_app.components import render_messages
-from streamlit_app.state import ensure_session_state
+from streamlit_app.state import ensure_session_state, reset_session
 
 
 def main() -> None:
@@ -35,6 +35,9 @@ def main() -> None:
     with st.sidebar:
         st.write(f"Thread ID: `{st.session_state.thread_id}`")
         st.write(f"User ID: `{st.session_state.user_id}`")
+        if st.button("Nueva sesión", use_container_width=True, type="primary"):
+            reset_session()
+            st.rerun()
 
     prompt = st.chat_input("Escribe tu mensaje")
 
@@ -51,21 +54,33 @@ def main() -> None:
                 transcription = client.transcribe_audio(
                     audio_bytes, filename=audio_file.name or "recording.wav"
                 )
-                st.session_state.pending_audio_text = transcription.get(
-                    "text", ""
+                st.session_state.pending_transcription = transcription
+                st.session_state.pending_audio_text = (
+                    transcription.get("translated_text")
+                    or transcription.get("text", "")
                 ).strip()
 
     st.divider()
 
     # Show transcribed text and send button
     if st.session_state.pending_audio_text:
+        transcription = st.session_state.pending_transcription or {}
+        original_text = (transcription.get("original_text") or "").strip()
+        detected_language = (transcription.get("detected_language") or "").strip()
+        translated_text = st.session_state.pending_audio_text
+
+        if original_text and original_text != translated_text:
+            lang_label = f" ({detected_language})" if detected_language else ""
+            with st.expander(f"📝 Original{lang_label}", expanded=False):
+                st.markdown(original_text)
         col1, col2 = st.columns([7, 1])
         with col1:
-            st.info(f"📝 Transcrito: {st.session_state.pending_audio_text}")
+            st.info(f"🇺🇸 English: {translated_text}")
         with col2:
             if st.button("Enviar", key="send_audio"):
-                _send_prompt(client, st.session_state.pending_audio_text)
+                _send_prompt(client, translated_text)
                 st.session_state.pending_audio_text = None
+                st.session_state.pending_transcription = None
                 st.session_state.last_audio_bytes = None
                 st.rerun()
 

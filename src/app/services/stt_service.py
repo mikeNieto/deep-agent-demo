@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json as json_module
 import logging
 from pathlib import Path
 
@@ -13,12 +14,35 @@ logger = logging.getLogger(__name__)
 
 OPENROUTER_STT_URL = "https://openrouter.ai/api/v1/chat/completions"
 
+STT_STRUCTURED_SCHEMA = {
+    "name": "stt_transcription",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "properties": {
+            "original_text": {
+                "type": "string",
+                "description": "Full transcription in the original spoken language",
+            },
+            "translated_text": {
+                "type": "string",
+                "description": "English translation of the speech",
+            },
+            "detected_language": {
+                "type": "string",
+                "description": "ISO 639-1 language code of the original speech (e.g. 'es', 'en', 'fr')",
+            },
+        },
+        "required": ["original_text", "translated_text", "detected_language"],
+        "additionalProperties": False,
+    },
+}
+
 DEFAULT_STT_PROMPT = (
     "You are an audio transcription and translation engine. "
-    "Listen carefully to the user's speech and return only the exact English translation "
-    "of what was said. Preserve the original meaning, tone, and intent. "
-    "Do not add commentary, labels, quotes, explanations, or extra words. "
-    "If the speech is already in English, return a clean English transcription only."
+    "Transcribe the audio in its original language, then provide an English translation. "
+    "Detect the language of the speech automatically. "
+    "Do not add commentary, labels, quotes, explanations, greetings, or extra words."
 )
 
 MIME_TYPE_BY_SUFFIX = {
@@ -51,7 +75,7 @@ class STTService:
         self,
         file_path: Path,
         mime_type: str | None = None,
-    ) -> tuple[str, str | None, float | None]:
+    ) -> tuple[str, str, str, float | None]:
         if not self._settings.openrouter_api_key:
             raise STTServiceError("OPENROUTER_API_KEY is not configured")
 
@@ -78,6 +102,10 @@ class STTService:
                     ],
                 }
             ],
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": STT_STRUCTURED_SCHEMA,
+            },
             "temperature": 0,
         }
 
@@ -93,13 +121,19 @@ class STTService:
             )
             response.raise_for_status()
             body = response.json()
-            text = self._extract_text(body)
-            if not text:
+            result = self._parse_structured_response(body)
+            if not result:
                 raise STTServiceError("OpenRouter STT returned an empty transcription")
+            original_text, translated_text, detected_language = result
         except httpx.HTTPStatusError as exc:
-            body = exc.response.text if exc.response is not None else str(exc)
-            logger.error("OpenRouter STT request failed: %s", body)
-            raise STTServiceError(f"OpenRouter STT request failed: {body}") from exc
+            raw = exc.response.text if exc.response is not None else str(exc)
+            logger.error("OpenRouter STT request failed: %s", raw)
+            if "response_format" in raw.lower() and "not supported" in raw.lower():
+                raise STTServiceError(
+                    f"STT model '{self._settings.stt_model}' does not support "
+                    "structured outputs. Please use a compatible model."
+                ) from exc
+            raise STTServiceError(f"OpenRouter STT request failed: {raw}") from exc
         except httpx.HTTPError as exc:
             logger.error("OpenRouter STT request failed: %s", exc)
             raise STTServiceError(f"OpenRouter STT request failed: {exc}") from exc
@@ -114,36 +148,46 @@ class STTService:
                 "OpenRouter STT response did not include usage.seconds model=%s",
                 self._settings.stt_model,
             )
-        return text.strip(), None, duration
+        return original_text, translated_text, detected_language, duration
 
     @staticmethod
-    def _extract_text(body: object) -> str:
+    def _parse_structured_response(body: object) -> tuple[str, str, str] | None:
         if not isinstance(body, dict):
-            return ""
+            return None
 
         choices = body.get("choices")
         if not isinstance(choices, list) or not choices:
-            return ""
+            return None
 
         message = choices[0].get("message") if isinstance(choices[0], dict) else None
         if not isinstance(message, dict):
-            return ""
+            return None
 
-        content = message.get("content")
-        if isinstance(content, str):
-            return content
+        raw_content = message.get("content")
+        if not isinstance(raw_content, str) or not raw_content.strip():
+            return None
 
-        if isinstance(content, list):
-            parts: list[str] = []
-            for item in content:
-                if not isinstance(item, dict):
-                    continue
-                text = item.get("text")
-                if isinstance(text, str):
-                    parts.append(text)
-            return "".join(parts)
+        try:
+            data = json_module.loads(raw_content)
+        except json_module.JSONDecodeError:
+            logger.warning("STT structured output is not valid JSON: %s", raw_content[:200])
+            return None
 
-        return ""
+        if not isinstance(data, dict):
+            logger.warning("STT structured output is not a JSON object: %s", raw_content[:200])
+            return None
+
+        original = (data.get("original_text") or "").strip()
+        translated = (data.get("translated_text") or "").strip()
+        language = (data.get("detected_language") or "").strip()
+
+        if not original or not translated:
+            logger.warning(
+                "STT structured output missing required fields: %s", raw_content[:200]
+            )
+            return None
+
+        return original, translated, language
 
     @staticmethod
     def _guess_mime_type(file_path: Path) -> str:
