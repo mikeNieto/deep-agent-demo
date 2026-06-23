@@ -43,6 +43,8 @@ class Settings(BaseSettings):
     tts_voice: str = Field(default="ef_dora", alias="TTS_VOICE")
     tts_timeout: float = Field(default=180.0, alias="TTS_TIMEOUT")
 
+    tavily_api_key: str = Field(default="", alias="TAVILY_API_KEY")
+
     streamlit_api_base_url: str = Field(
         default="http://localhost:8000",
         alias="STREAMLIT_API_BASE_URL",
