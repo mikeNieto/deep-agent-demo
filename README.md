@@ -33,6 +33,9 @@ uv run streamlit run streamlit_app/app.py
 ### Docker
 
 ```bash
+# Construir la imagen
+docker compose build
+
 # API + Streamlit
 docker compose up -d
 

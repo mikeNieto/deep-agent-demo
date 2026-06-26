@@ -24,7 +24,6 @@ data/
 tests/
 
 # Docs
-README.md
 AGENTS.md
 
 # Env (passed at runtime)
