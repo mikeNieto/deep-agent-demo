@@ -27,8 +27,6 @@ services:
       - "host.docker.internal:host-gateway"
     env_file:
       - .env
-    environment:
-      - STREAMLIT_API_BASE_URL=http://host.docker.internal:${API_PORT:-8000}
     volumes:
       - ./data:/app/data
     restart: unless-stopped
