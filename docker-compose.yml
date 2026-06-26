@@ -1,0 +1,37 @@
+services:
+  api:
+    build: .
+    container_name: agent-api
+    ports:
+      - "${API_PORT:-8000}:${API_PORT:-8000}"
+    env_file:
+      - .env
+    environment:
+      - API_HOST=0.0.0.0
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${API_PORT:-8000}/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  streamlit:
+    build: .
+    container_name: agent-streamlit
+    command: ["uv", "run", "streamlit", "run", "streamlit_app/app.py", "--server.address=0.0.0.0"]
+    ports:
+      - "${STREAMLIT_PORT:-8501}:8501"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env
+    environment:
+      - STREAMLIT_API_BASE_URL=http://host.docker.internal:${API_PORT:-8000}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy

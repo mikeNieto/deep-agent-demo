@@ -30,6 +30,25 @@ uv run agent-api
 uv run streamlit run streamlit_app/app.py
 ```
 
+### Docker
+
+```bash
+# API + Streamlit
+docker compose up -d
+
+# Solo API
+docker compose up -d api
+```
+
+Requisitos: Docker y `docker compose`. El archivo `.env` debe existir con `OPENROUTER_API_KEY` configurada.
+
+Servicios:
+
+| Servicio | Puerto | Acceso |
+|---|---|---|
+| `api` | `8000` | `http://localhost:8000` |
+| `streamlit` | `8501` | `http://localhost:8501` |
+
 ### Tests
 
 ```bash
