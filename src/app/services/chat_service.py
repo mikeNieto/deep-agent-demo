@@ -74,6 +74,11 @@ class ChatService:
             try:
                 tts_text = self._tts_preparation_service.prepare_text(agent_text)
                 logger.info(
+                    "TTS preparation response thread_id=%s text=%s",
+                    payload.thread_id,
+                    tts_text,
+                )
+                logger.info(
                     "Sending text to TTS thread_id=%s text_chars=%s",
                     payload.thread_id,
                     len(tts_text),
