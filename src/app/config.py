@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     )
 
     stt_model: str = Field(default="google/gemini-2.5-flash-lite", alias="STT_MODEL")
+    stt_timeout: float = Field(default=180.0, alias="STT_TIMEOUT")
 
     tts_model: str = Field(default="hexgrad/kokoro-82m", alias="TTS_MODEL")
     tts_preparation_model: str = Field(default="", alias="TTS_PREPARATION_MODEL")

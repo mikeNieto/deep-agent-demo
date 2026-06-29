@@ -65,7 +65,7 @@ class STTServiceError(RuntimeError):
 class STTService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._client = httpx.Client()
+        self._client = httpx.Client(timeout=settings.stt_timeout)
 
     @property
     def loaded(self) -> bool:
