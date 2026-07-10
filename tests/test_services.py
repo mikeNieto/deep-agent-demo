@@ -37,11 +37,11 @@ def test_chat_service_handles_tts_errors_without_failing() -> None:
             }
 
     class FailingTTSService:
-        def synthesize_to_mp3(self, text: str, voice: str | None = None):
+        async def synthesize_to_mp3(self, text: str, voice: str | None = None):
             raise TTSServiceError("simulated provider timeout")
 
     class DummyTTSPreparationService:
-        def prepare_text(self, agent_response: str) -> str:
+        async def prepare_text(self, agent_response: str) -> str:
             return f"Texto listo para TTS: {agent_response}"
 
     chat_service = ChatService(
@@ -80,11 +80,11 @@ def test_chat_service_handles_tts_preparation_errors_without_failing() -> None:
             }
 
     class DummyTTSService:
-        def synthesize_to_mp3(self, text: str, voice: str | None = None):
+        async def synthesize_to_mp3(self, text: str, voice: str | None = None):
             raise AssertionError("TTS should not run when preparation fails")
 
     class FailingTTSPreparationService:
-        def prepare_text(self, agent_response: str) -> str:
+        async def prepare_text(self, agent_response: str) -> str:
             raise TTSPreparationServiceError("simulated preparation failure")
 
     chat_service = ChatService(
@@ -123,12 +123,12 @@ def test_chat_service_returns_tts_text_for_display() -> None:
             }
 
     class DummyTTSService:
-        def synthesize_to_mp3(self, text: str, voice: str | None = None):
+        async def synthesize_to_mp3(self, text: str, voice: str | None = None):
             assert text == "Texto listo para TTS: Hello from the agent"
             return Path("data/audio/test.mp3"), 1.0
 
     class DummyTTSPreparationService:
-        def prepare_text(self, agent_response: str) -> str:
+        async def prepare_text(self, agent_response: str) -> str:
             return f"Texto listo para TTS: {agent_response}"
 
     conversation_service = ConversationService()
@@ -157,14 +157,25 @@ def test_chat_service_returns_tts_text_for_display() -> None:
 
 
 def test_tts_service_extracts_audio_duration_with_ffprobe() -> None:
-    mock_completed = SimpleNamespace(stdout='{"format": {"duration": "1.234"}}')
+    from unittest.mock import AsyncMock, MagicMock
 
-    with (
-        patch("app.services.tts_service.shutil.which", return_value="/usr/bin/ffprobe"),
-        patch("app.services.tts_service.subprocess.run", return_value=mock_completed),
-    ):
-        duration = TTSService._extract_mp3_duration(Path("data/audio/test.mp3"))
+    async def _run() -> float | None:
+        mock_proc = MagicMock()
+        mock_proc.communicate = AsyncMock(
+            return_value=(b'{"format": {"duration": "1.234"}}', b"")
+        )
+        mock_proc.returncode = 0
 
+        with (
+            patch("app.services.tts_service.shutil.which", return_value="/usr/bin/ffprobe"),
+            patch(
+                "app.services.tts_service.asyncio.create_subprocess_exec",
+                AsyncMock(return_value=mock_proc),
+            ),
+        ):
+            return await TTSService._extract_audio_duration(Path("data/audio/test.mp3"))
+
+    duration = asyncio.run(_run())
     assert duration == 1.234
 
 
@@ -176,4 +187,4 @@ def test_tts_preparation_service_returns_text_when_response_is_empty() -> None:
     )
     service = TTSPreparationService(settings)
 
-    assert service.prepare_text("   ") == ""
+    assert asyncio.run(service.prepare_text("   ")) == ""

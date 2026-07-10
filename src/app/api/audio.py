@@ -75,7 +75,7 @@ async def synthesize_audio(
     payload: AudioSynthesisRequest,
     tts_service: TTSService = Depends(get_tts_service),
 ) -> AudioSynthesisResponse:
-    mp3_path, duration = tts_service.synthesize_to_mp3(payload.text, payload.voice)
+    mp3_path, duration = await tts_service.synthesize_to_mp3(payload.text, payload.voice)
     return AudioSynthesisResponse(
         audio_url=f"/api/audio/files/{mp3_path.name}",
         duration_seconds=duration,
@@ -88,4 +88,4 @@ async def get_audio_file(filename: str) -> FileResponse:
     file_path = settings.audio_temp_dir / filename
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Audio file not found")
-    return FileResponse(file_path, media_type="audio/mpeg", filename=filename)
+    return FileResponse(file_path, media_type="audio/wav" if filename.endswith(".wav") else "audio/mpeg", filename=filename)

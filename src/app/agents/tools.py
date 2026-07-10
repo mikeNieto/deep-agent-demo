@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from functools import wraps
 from datetime import datetime
@@ -16,6 +17,39 @@ logger = logging.getLogger(__name__)
 
 
 def log_tool_call(func):
+    if asyncio.iscoroutinefunction(func):
+
+        @wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            started_at = perf_counter()
+            logger.info(
+                "Deepagent tool call started tool=%s args=%s kwargs=%s",
+                func.__name__,
+                args,
+                kwargs,
+            )
+            try:
+                result = await func(*args, **kwargs)
+            except Exception:
+                elapsed_ms = round((perf_counter() - started_at) * 1000, 2)
+                logger.exception(
+                    "Deepagent tool call failed tool=%s elapsed_ms=%s",
+                    func.__name__,
+                    elapsed_ms,
+                )
+                raise
+
+            elapsed_ms = round((perf_counter() - started_at) * 1000, 2)
+            logger.info(
+                "Deepagent tool call completed tool=%s elapsed_ms=%s result=%s",
+                func.__name__,
+                elapsed_ms,
+                result,
+            )
+            return result
+
+        return async_wrapper
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         started_at = perf_counter()
@@ -58,22 +92,33 @@ def get_current_datetime() -> str:
 
 @tool
 @log_tool_call
-def get_current_bitcoin_price() -> str:
+async def get_current_bitcoin_price() -> str:
     """Return the current Bitcoin price in USD."""
-    import httpx
-    resp = httpx.get("https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT", timeout=10)
-    resp.raise_for_status()
-    price = float(resp.json()["price"])
-    return f"${price:,.2f}"
+
+    def _fetch() -> str:
+        import httpx
+
+        resp = httpx.get(
+            "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT", timeout=10
+        )
+        resp.raise_for_status()
+        price = float(resp.json()["price"])
+        return f"${price:,.2f}"
+
+    return await asyncio.to_thread(_fetch)
 
 
 @tool
 @log_tool_call
-def web_search(query: str) -> str:
+async def web_search(query: str) -> str:
     """Search the internet for current or external information."""
     settings = get_settings()
-    client = TavilyClient(api_key=settings.tavily_api_key)
-    response = client.search(query=query)
+
+    def _search() -> dict:
+        client = TavilyClient(api_key=settings.tavily_api_key)
+        return client.search(query=query)
+
+    response = await asyncio.to_thread(_search)
     if not response.get("results"):
         return "No se encontraron resultados."
     lines = []

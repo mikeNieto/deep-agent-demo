@@ -24,9 +24,9 @@ class TTSPreparationServiceError(RuntimeError):
 class TTSPreparationService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._client = httpx.Client()
+        self._client = httpx.AsyncClient()
 
-    def prepare_text(self, agent_response: str) -> str:
+    async def prepare_text(self, agent_response: str) -> str:
         started_at = perf_counter()
         text = agent_response.strip()
         if not text:
@@ -42,7 +42,7 @@ class TTSPreparationService:
         )
 
         try:
-            response = self._client.post(
+            response = await self._client.post(
                 OPENROUTER_CHAT_COMPLETIONS_URL,
                 headers={
                     "Authorization": f"Bearer {self._settings.openrouter_api_key}",

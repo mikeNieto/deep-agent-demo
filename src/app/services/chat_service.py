@@ -72,7 +72,7 @@ class ChatService:
         tts_text = None
         if payload.response_audio and agent_text:
             try:
-                tts_text = self._tts_preparation_service.prepare_text(agent_text)
+                tts_text = await self._tts_preparation_service.prepare_text(agent_text)
                 logger.info(
                     "TTS preparation response thread_id=%s text=%s",
                     payload.thread_id,
@@ -84,10 +84,10 @@ class ChatService:
                     len(tts_text),
                 )
                 tts_started_at = perf_counter()
-                mp3_path, audio_duration = self._tts_service.synthesize_to_mp3(tts_text)
+                mp3_path, audio_duration = await self._tts_service.synthesize_to_mp3(tts_text)
                 tts_elapsed_ms = round((perf_counter() - tts_started_at) * 1000, 2)
                 audio_url = f"/api/audio/files/{mp3_path.name}"
-                audio_mime_type = "audio/mpeg"
+                audio_mime_type = "audio/wav" if mp3_path.suffix == ".wav" else "audio/mpeg"
                 logger.info(
                     "TTS completed thread_id=%s elapsed_ms=%s audio_duration_seconds=%s file=%s",
                     payload.thread_id,
