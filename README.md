@@ -1,59 +1,78 @@
-## Conversational Agent MVP
+# Gemini 3.1 Flash Live — Test
 
-MVP de un agente conversacional con `FastAPI`, `Deep Agents`, `Streamlit`, STT y TTS con OpenRouter.
+Real-time voice chat using Google's Gemini 3.1 Flash Live model via WebSocket.
 
-### Requisitos
-
-- Python 3.13
-- `uv`
-- `OPENROUTER_API_KEY` configurada (para chat, STT y TTS)
-
-### Variables de entorno
-
-Crear `.env` basado en `.env.example`.
-
-### Instalacion
+## Setup
 
 ```bash
 uv sync
 ```
 
-### Ejecutar API
+Add your Google API key to `.env`:
 
 ```bash
-uv run agent-api
+echo 'GOOGLE_API_KEY=your-key-here' >> .env
 ```
 
-### Ejecutar Streamlit
+Or copy `.env.example` and fill in the key.
+
+## Run
 
 ```bash
-uv run streamlit run streamlit_app/app.py
+uv run live-api
 ```
 
-### Docker
+Opens at **http://localhost:8000** — a single-page app served from the same server.
 
-```bash
-# Construir la imagen
-docker compose build
+- Click **Connect** to establish the WebSocket + Gemini Live session
+- Click **Start Mic** and speak — Gemini responds with audio
+- Or type text and press **Send**
+- Speak while Gemini is talking to interrupt (voice activity detection)
 
-# API + Streamlit
-docker compose up -d
+## WebSocket API
 
-# Solo API
-docker compose up -d api
-```
+External clients connect to `ws://localhost:8000/api/live/ws`.
 
-Requisitos: Docker y `docker compose`. El archivo `.env` debe existir con `OPENROUTER_API_KEY` configurada.
+### Messages
 
-Servicios:
-
-| Servicio | Puerto | Acceso |
+| Type | Direction | Description |
 |---|---|---|
-| `api` | `8000` | `http://localhost:8000` |
-| `streamlit` | `8501` | `http://localhost:8501` |
+| `setup` | C→S | Must be first. `{"type":"setup","system_instruction":"..."}` |
+| `audio_config` | C→S | Mic sample rate. `{"type":"audio_config","sample_rate":48000}` |
+| `audio_in` | C→S | Audio chunk. `{"type":"audio_in","data":"<base64 pcm>"}` |
+| `text_in` | C→S | Text message. `{"type":"text_in","text":"Hello"}` |
+| `audio_out` | S→C | Audio response. `{"type":"audio_out","data":"<base64 pcm24k>"}` |
+| `text` | S→C | Transcript. `{"type":"text","role":"user\|model"[,"interim":true],"content":"..."}` |
+| `status` | S→C | `{"type":"status","state":"idle"\|"speaking"}` |
+| `error` | S→C | `{"type":"error","message":"..."}` |
 
-### Tests
+### Test with wscat
 
 ```bash
-uv run pytest
+wscat -c ws://localhost:8000/api/live/ws
+# Send:
+{"type":"setup"}
+{"type":"text_in","text":"Hola"}
 ```
+
+## Docker
+
+```bash
+# Build and run with compose
+docker compose up -d --build
+
+# Or standalone
+docker build -t gemini-live .
+docker run -d -p 8000:8000 --env-file .env gemini-live
+```
+
+Opens at **http://localhost:8000**.
+
+## Configuration
+
+| Env var | Default |
+|---|---|
+| `GOOGLE_API_KEY` | — |
+| `GEMINI_LIVE_MODEL` | `gemini-3.1-flash-live-preview` |
+| `API_HOST` | `0.0.0.0` |
+| `API_PORT` | `8000` |

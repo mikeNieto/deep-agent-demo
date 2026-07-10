@@ -1,24 +1,8 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-
-# Virtual environments
-.venv
-
-# Data files
-data/**
-data/sqlite/*.db
-
-
-# env files
 .env
-.env.local
-.env.*.local
-
-# sqlite database files
-*.db
-*.sqlite3
+.venv/
+__pycache__/
+*.pyc
+data/
+.pytest_cache/
+*.egg-info/
+dist/

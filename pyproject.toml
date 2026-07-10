@@ -1,29 +1,17 @@
 [project]
-name = "agent"
+name = "app"
 version = "0.1.0"
-description = "MVP conversational AI agent with FastAPI, Deep Agents, Streamlit, STT and TTS"
-readme = "README.md"
-authors = [
-    { name = "Developer", email = "dev@example.com" }
-]
+description = "Test Google Gemini 3.1 Flash Live via WebSocket"
 requires-python = ">=3.13"
 dependencies = [
-    "deepagents==0.6.8",
-    "fastapi==0.136.3",
-    "httpx>=0.28.1",
-    "langchain-openrouter>=0.2.3",
-    "langgraph-checkpoint-sqlite>=3.1.0",
-    "pydantic-settings>=2.14.1",
-    "python-multipart>=0.0.32",
-    "sqlalchemy>=2.0.50",
-    "streamlit==1.58.0",
-    "tavily-python>=0.7.26",
-    "uvicorn>=0.49.0",
+    "fastapi>=0.136.0",
+    "uvicorn[standard]>=0.49.0",
+    "google-genai>=1.0.0",
+    "pydantic-settings>=2.0.0",
 ]
 
 [project.scripts]
-agent-api = "app.main:run"
-agent-streamlit = "streamlit_app.app:main"
+live-api = "app.main:run"
 
 [build-system]
 requires = ["uv_build>=0.9.28,<0.10.0"]
@@ -31,6 +19,6 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "pytest>=9.0.3",
+    "pytest>=9.0.0",
     "pytest-asyncio>=1.4.0",
 ]

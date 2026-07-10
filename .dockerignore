@@ -1,32 +1,12 @@
-# Python
-__pycache__/
-*.py[cod]
-dist/
-build/
-*.egg-info/
-
-# Virtual env
-.venv/
-
-# Git
 .git/
 .gitignore
-
-# Data (mounted as volume)
-data/
-
-# IDE
-.vscode/
-.idea/
-
-# Tests
+.venv/
+__pycache__/
+*.pyc
 .pytest_cache/
 tests/
-
-# Docs
-AGENTS.md
-
-# Env (passed at runtime)
+data/
 .env
 .env.local
-.env.*.local
+.idea/
+.vscode/
