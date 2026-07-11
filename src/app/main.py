@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
@@ -12,7 +13,11 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.agent import create_agent_graph
-from app.audio import synthesize_speech, transcribe_audio
+from app.audio import (
+    get_interim_audio,
+    synthesize_speech,
+    transcribe_audio,
+)
 from app.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -57,7 +62,7 @@ async def _handle_websocket(ws: WebSocket) -> None:
                     await ws.send_json({"type": "status", "state": "transcribing"})
                     t0 = perf_counter()
                     try:
-                        transcription = await transcribe_audio(
+                        transcription, language = await transcribe_audio(
                             settings,
                             bytes(audio_buffer),
                             mime_type="audio/wav",
@@ -69,23 +74,24 @@ async def _handle_websocket(ws: WebSocket) -> None:
                         continue
                     audio_buffer.clear()
                     logger.info(
-                        "STT completed elapsed_ms=%s text=%s",
+                        "STT completed elapsed_ms=%s text=%s lang=%s",
                         round((perf_counter() - t0) * 1000, 2),
                         transcription,
+                        language,
                     )
 
                     if transcription:
                         if _is_transcription_error(transcription):
                             await ws.send_json({"type": "error", "message": "Could not transcribe audio. Please try again."})
                         else:
-                            await _process_text(ws, agent_graph, transcription, thread_id)
+                            await _process_text(ws, agent_graph, transcription, thread_id, language)
                     else:
                         await ws.send_json({"type": "error", "message": "Empty transcription"})
 
                 elif msg_type == "text":
                     user_text = data.get("content", "").strip()
                     if user_text:
-                        await _process_text(ws, agent_graph, user_text, thread_id)
+                        await _process_text(ws, agent_graph, user_text, thread_id, "en")
 
     except WebSocketDisconnect:
         logger.info("WebSocket disconnected")
@@ -98,12 +104,26 @@ async def _process_text(
     agent_graph,
     text: str,
     thread_id: str,
+    language: str = "en",
 ) -> None:
     settings = get_settings()
     await ws.send_json({"type": "status", "state": "thinking"})
 
     t0 = perf_counter()
     full_text = ""
+
+    async def _interim_audio() -> None:
+        try:
+            await asyncio.sleep(1.0)
+            result = await get_interim_audio(settings, language)
+            if result:
+                interim_audio, mime = result
+                await ws.send_json({"type": "audio_info", "mime_type": mime})
+                await ws.send_bytes(interim_audio)
+        except asyncio.CancelledError:
+            pass
+
+    interim_task = asyncio.create_task(_interim_audio())
 
     async for event in agent_graph.astream_events(
         {"messages": [{"role": "user", "content": text}]},
@@ -124,6 +144,12 @@ async def _process_text(
             token = str(token)
             full_text += token
             await ws.send_json({"type": "token", "content": token})
+
+    interim_task.cancel()
+    try:
+        await interim_task
+    except asyncio.CancelledError:
+        pass
 
     agent_elapsed = round((perf_counter() - t0) * 1000, 2)
     agent_text = full_text.strip()
