@@ -6,6 +6,7 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from time import perf_counter
+from uuid import uuid4
 
 import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -24,6 +25,22 @@ from app.usage import get_tracker
 logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent.parent / "static"
+FIXED_USER_ID = "sylys-user"
+
+
+def _new_thread_id() -> str:
+    return f"thread-{uuid4().hex[:12]}"
+
+
+def _default_response(language: str) -> str:
+    defaults = {
+        "es": "Hecho.",
+        "en": "Done.",
+        "fr": "C'est fait.",
+        "pt": "Feito.",
+        "zh": "完成了。",
+    }
+    return defaults.get(language, defaults["en"])
 
 
 def _is_transcription_error(text: str) -> bool:
@@ -55,10 +72,11 @@ async def _send_interim(ws: WebSocket, settings, language: str) -> None:
 async def _handle_websocket(ws: WebSocket) -> None:
     await ws.accept()
     settings = get_settings()
-    agent_graph = create_agent_graph(settings)
+    agent_graph = ws.app.state.agent_graph
 
     audio_buffer = bytearray()
-    thread_id = "ws-default"
+    thread_id = _new_thread_id()
+    logger.info("WebSocket connected thread_id=%s", thread_id)
 
     try:
         while True:
@@ -82,7 +100,9 @@ async def _handle_websocket(ws: WebSocket) -> None:
                         )
                     except Exception as e:
                         logger.exception("STT failed")
-                        await ws.send_json({"type": "error", "message": f"STT error: {e}"})
+                        await ws.send_json(
+                            {"type": "error", "message": f"STT error: {e}"}
+                        )
                         audio_buffer.clear()
                         continue
                     audio_dur = len(audio_buffer) / 32000.0
@@ -97,11 +117,20 @@ async def _handle_websocket(ws: WebSocket) -> None:
 
                     if transcription:
                         if _is_transcription_error(transcription):
-                            await ws.send_json({"type": "error", "message": "Could not transcribe audio. Please try again."})
+                            await ws.send_json(
+                                {
+                                    "type": "error",
+                                    "message": "Could not transcribe audio. Please try again.",
+                                }
+                            )
                         else:
-                            await _process_text(ws, agent_graph, transcription, thread_id, language)
+                            await _process_text(
+                                ws, agent_graph, transcription, thread_id, language
+                            )
                     else:
-                        await ws.send_json({"type": "error", "message": "Empty transcription"})
+                        await ws.send_json(
+                            {"type": "error", "message": "Empty transcription"}
+                        )
 
                 elif msg_type == "text":
                     user_text = data.get("content", "").strip()
@@ -180,7 +209,12 @@ async def _process_text(
     agent_elapsed = round((perf_counter() - t0) * 1000, 2)
     agent_text = full_text.strip()
 
-    get_tracker().add_agent_tokens(input_tokens=agent_in_tokens, output_tokens=agent_out_tokens)
+    if not agent_text:
+        agent_text = _default_response(language)
+
+    get_tracker().add_agent_tokens(
+        input_tokens=agent_in_tokens, output_tokens=agent_out_tokens
+    )
 
     logger.info(
         "Agent completed elapsed_ms=%s output_chars=%s",
@@ -217,17 +251,29 @@ async def _process_text(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     )
     settings = get_settings()
-    if settings.google_api_key:
-        try:
-            create_agent_graph(settings)
-        except Exception as e:
-            logger.warning("Could not create agent graph: %s", e)
-    yield
+    db_path = str(settings.audio_temp_dir.parent / "sqlite" / "checkpoints.db")
+    (settings.audio_temp_dir.parent / "sqlite").mkdir(parents=True, exist_ok=True)
+
+    async with AsyncSqliteSaver.from_conn_string(db_path) as saver:
+        await saver.setup()
+        agent_graph = None
+        if settings.google_api_key:
+            try:
+                agent_graph = create_agent_graph(settings, checkpointer=saver)
+                logger.info("Agent graph created with persistent checkpointer")
+            except Exception as e:
+                logger.warning("Could not create agent graph: %s", e)
+
+        app.state.agent_graph = agent_graph
+        app.state.settings = settings
+        yield
 
 
 app = FastAPI(title="SYLYS Agent", lifespan=lifespan)

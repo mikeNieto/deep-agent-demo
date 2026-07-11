@@ -5,14 +5,14 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from deepagents import create_deep_agent
-from deepagents.backends import CompositeBackend, StateBackend
+from deepagents.backends import CompositeBackend, FilesystemBackend
 from langchain_core.tools import tool
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.config import Settings, get_settings
 
 
-SYSTEM_PROMPT = """You are SYLYS, a helpful conversational assistant.
+SYSTEM_PROMPT = """You are SYLYS and when someone ask you for your name the pronunctiation is like silis. You are a helpful conversational assistant.
 
 Respond in the SAME LANGUAGE that the user uses. If the user writes in Spanish, respond in Spanish. If in English, respond in English. Auto-detect the language.
 Be concise but complete.
@@ -21,7 +21,16 @@ Use the get_current_datetime tool only when the current date or time matters.
 Use the web_search tool to search the internet for current or external information when needed.
 Never use markdown. Always answer in plain text.
 Do not use emojis.
-Do not include greetings or farewells."""
+Do not include greetings or farewells.
+
+File operations:
+- Use write_file to create NEW files. It fails if the file already exists.
+- Use edit_file to modify EXISTING files. Read the file first before editing.
+- Use read_file to read a file's contents.
+- IMPORTANT: read_file shows line numbers (e.g., "     1\tcontent") for reference only.
+  When using edit_file, use the ACTUAL content WITHOUT line number prefixes and tabs.
+  For example, if read_file shows "     4\tSYLYS", the real content to match is just "SYLYS".
+- Use ls to list files in a directory."""
 
 
 @tool
@@ -36,6 +45,7 @@ async def get_current_bitcoin_price() -> str:
 
     def _fetch() -> str:
         import httpx
+
         resp = httpx.get(
             "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
             timeout=10,
@@ -71,11 +81,13 @@ DEFAULT_TOOLS = [get_current_datetime, get_current_bitcoin_price, web_search]
 
 def _memory_files(root_dir: str) -> list[str]:
     from pathlib import Path
+
     return [str(Path(root_dir) / "memory" / "AGENTS.md")]
 
 
 def _skill_paths(root_dir: str) -> list[str]:
     from pathlib import Path
+
     return [str(Path(root_dir) / "skills")]
 
 
@@ -96,11 +108,18 @@ def create_chat_model(settings: Settings) -> ChatGoogleGenerativeAI:
     return ChatGoogleGenerativeAI(**kwargs)
 
 
-def create_agent_graph(settings: Settings):
+def create_agent_graph(settings: Settings, checkpointer=None):
+    from pathlib import Path
+
     from app.config import ROOT_DIR
 
     model = create_chat_model(settings)
-    backend = CompositeBackend(default=StateBackend(), routes={})
+    files_root = settings.audio_temp_dir.parent / "files"
+    files_root.mkdir(parents=True, exist_ok=True)
+    backend = CompositeBackend(
+        default=FilesystemBackend(root_dir=str(files_root), virtual_mode=True),
+        routes={},
+    )
     return create_deep_agent(
         model=model,
         tools=DEFAULT_TOOLS,
@@ -108,6 +127,7 @@ def create_agent_graph(settings: Settings):
         memory=_memory_files(str(ROOT_DIR)),
         skills=_skill_paths(str(ROOT_DIR)),
         backend=backend,
+        checkpointer=checkpointer,
         debug=False,
         name="SYLYS",
     )
