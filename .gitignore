@@ -10,8 +10,7 @@ wheels/
 .venv
 
 # Data files
-data/**
-data/sqlite/*.db
+data/
 
 
 # env files

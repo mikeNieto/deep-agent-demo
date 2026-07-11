@@ -1,12 +1,12 @@
-## Conversational Agent MVP
+## SYLYS — Conversational Agent
 
-MVP de un agente conversacional con `FastAPI`, `Deep Agents`, `Streamlit`, STT y TTS con OpenRouter.
+Agente conversacional con **FastAPI + WebSockets**, **Deep Agents** y **Google Gemini** (LLM, STT, TTS, Google Search Grounding).
 
 ### Requisitos
 
 - Python 3.13
 - `uv`
-- `OPENROUTER_API_KEY` configurada (para chat, STT y TTS)
+- `GOOGLE_API_KEY` configurada (Gemini)
 
 ### Variables de entorno
 
@@ -18,39 +18,21 @@ Crear `.env` basado en `.env.example`.
 uv sync
 ```
 
-### Ejecutar API
+### Ejecutar
 
 ```bash
 uv run agent-api
 ```
 
-### Ejecutar Streamlit
-
-```bash
-uv run streamlit run streamlit_app/app.py
-```
+Abre `http://localhost:8000` en el navegador.
 
 ### Docker
 
 ```bash
-# Construir la imagen
-docker compose build
-
-# API + Streamlit
 docker compose up -d
-
-# Solo API
-docker compose up -d api
 ```
 
-Requisitos: Docker y `docker compose`. El archivo `.env` debe existir con `OPENROUTER_API_KEY` configurada.
-
-Servicios:
-
-| Servicio | Puerto | Acceso |
-|---|---|---|
-| `api` | `8000` | `http://localhost:8000` |
-| `streamlit` | `8501` | `http://localhost:8501` |
+Servicio unico en `http://localhost:8000`.
 
 ### Tests
 

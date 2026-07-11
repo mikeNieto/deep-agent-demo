@@ -1,7 +1,7 @@
 services:
   api:
     build: .
-    container_name: agent-api
+    container_name: syllys-agent
     ports:
       - "${API_PORT:-8000}:${API_PORT:-8000}"
     env_file:
@@ -16,20 +16,3 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-
-  streamlit:
-    build: .
-    container_name: agent-streamlit
-    command: ["uv", "run", "streamlit", "run", "streamlit_app/app.py", "--server.address=0.0.0.0"]
-    ports:
-      - "${STREAMLIT_PORT:-8501}:8501"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    env_file:
-      - .env
-    volumes:
-      - ./data:/app/data
-    restart: unless-stopped
-    depends_on:
-      api:
-        condition: service_healthy
