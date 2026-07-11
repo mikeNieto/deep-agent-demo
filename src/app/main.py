@@ -39,6 +39,17 @@ def _is_transcription_error(text: str) -> bool:
     )
 
 
+async def _send_interim(ws: WebSocket, settings, language: str) -> None:
+    try:
+        result = await get_interim_audio(settings, language)
+        if result:
+            audio, mime = result
+            await ws.send_json({"type": "audio_info", "mime_type": mime})
+            await ws.send_bytes(audio)
+    except Exception as e:
+        logger.warning("Interim audio failed: %s", e)
+
+
 async def _handle_websocket(ws: WebSocket) -> None:
     await ws.accept()
     settings = get_settings()
@@ -111,19 +122,7 @@ async def _process_text(
 
     t0 = perf_counter()
     full_text = ""
-
-    async def _interim_audio() -> None:
-        try:
-            await asyncio.sleep(1.0)
-            result = await get_interim_audio(settings, language)
-            if result:
-                interim_audio, mime = result
-                await ws.send_json({"type": "audio_info", "mime_type": mime})
-                await ws.send_bytes(interim_audio)
-        except asyncio.CancelledError:
-            pass
-
-    interim_task = asyncio.create_task(_interim_audio())
+    tool_interim_sent = False
 
     async for event in agent_graph.astream_events(
         {"messages": [{"role": "user", "content": text}]},
@@ -131,6 +130,23 @@ async def _process_text(
         version="v2",
     ):
         kind = event.get("event")
+
+        if kind == "on_tool_start":
+            name = event.get("name", "unknown")
+            data = event.get("data", {})
+            inp = data.get("input", {})
+            logger.info("Tool call started tool=%s input=%s", name, inp)
+            if not tool_interim_sent:
+                tool_interim_sent = True
+                asyncio.create_task(_send_interim(ws, settings, language))
+
+        if kind == "on_tool_end":
+            name = event.get("name", "unknown")
+            data = event.get("data", {})
+            out = data.get("output", "")
+            preview = str(out)[:300]
+            logger.info("Tool call ended tool=%s output=%s", name, preview)
+
         if kind == "on_chat_model_stream":
             chunk = event["data"]["chunk"]
             token = chunk.content if hasattr(chunk, "content") else ""
@@ -144,12 +160,6 @@ async def _process_text(
             token = str(token)
             full_text += token
             await ws.send_json({"type": "token", "content": token})
-
-    interim_task.cancel()
-    try:
-        await interim_task
-    except asyncio.CancelledError:
-        pass
 
     agent_elapsed = round((perf_counter() - t0) * 1000, 2)
     agent_text = full_text.strip()
