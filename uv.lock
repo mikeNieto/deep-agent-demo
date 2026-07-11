@@ -17,6 +17,7 @@ source = { editable = "." }
 dependencies = [
     { name = "deepagents" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "langchain-google-genai" },
     { name = "langgraph-checkpoint-sqlite" },
     { name = "pydantic-settings" },
@@ -33,6 +34,7 @@ dev = [
 requires-dist = [
     { name = "deepagents", specifier = ">=0.6.8" },
     { name = "fastapi", specifier = ">=0.136.3" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "langchain-google-genai", specifier = ">=3.1.0" },
     { name = "langgraph-checkpoint-sqlite", specifier = ">=3.1.0" },
     { name = "pydantic-settings", specifier = ">=2.14.1" },

@@ -3,9 +3,11 @@ from __future__ import annotations
 import base64
 import json as _json
 import logging
+import re
 import struct
 from pathlib import Path
 
+import httpx
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.config import Settings
@@ -135,30 +137,82 @@ async def transcribe_audio(
         return raw.strip(), _DEFAULT_LANG
 
 
+_EMOJI_RE = re.compile(
+    "[" "\U0001F600-\U0001F64F" "\U0001F300-\U0001F5FF" "\U0001F680-\U0001F6FF"
+    "\U0001F900-\U0001F9FF" "\U0001FA00-\U0001FA6F" "\U0001FA70-\U0001FAFF"
+    "\U00002600-\U000027BF" "\U0001F1E6-\U0001F1FF" "\U0000FE0F" "\U0000200D"
+    "]+"
+)
+
+
+def _clean_for_tts(text: str) -> str:
+    text = _EMOJI_RE.sub("", text)                                 # emojis
+    text = re.sub(r" {2,}", " ", text)                              # collapsed spaces
+    text = re.sub(r"!\[.+?\]\(.+?\)", "", text)                  # images
+    text = re.sub(r"\[(.+?)\]\(.+?\)", r"\1", text)               # links
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)                  # bold
+    text = re.sub(r"(?<!\*)\*(?!\*)(.+?)\*", r"\1", text)         # italic
+    text = re.sub(r"__(.+?)__", r"\1", text)                      # underline
+    text = re.sub(r"~~(.+?)~~", r"\1", text)                      # strikethrough
+    text = re.sub(r"`{3}.*?\n(.*?)`{3}", r"\1", text, flags=re.S) # code block
+    text = re.sub(r"`{1,2}(.+?)`{1,2}", r"\1", text)              # inline code
+    text = re.sub(r"^#{1,6}\s+", "", text, flags=re.M)            # headings
+    text = re.sub(r"\s+#{1,6}\s+", " ", text)                     # inline headings
+    text = re.sub(r"^>+\s+", "", text, flags=re.M)                 # blockquote
+    text = re.sub(r"^\d+\.\s+", "", text, flags=re.M)              # numbered lists
+    text = re.sub(r"^[-*+]\s", "", text, flags=re.M)               # bullet lists
+    text = re.sub(r"[-*_]{3,}", "", text)                          # horizontal rules
+    text = re.sub(r"\b(\d+)-(\d+)\b", r"\1 \2", text)              # scores: "2-1"
+    text = re.sub(r"([^\s]),\s*([^\s])", r"\1 \2", text)           # commas: dates, lists
+    text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)                  # 3+ newlines
+    text = re.sub(r"^[ \t]+", "", text, flags=re.M)                # leading space per line
+    return text.strip()
+
+
 async def synthesize_speech(
     settings: Settings,
     text: str,
+    language: str = "en",
 ) -> tuple[bytes, str]:
-    from google import genai
-    from google.genai import types
+    text = _clean_for_tts(text)
+    voice_name = settings.tts_voice_es if language == "es" else settings.tts_voice_en
+    lang_code = "es-ES" if language == "es" else "en-US"
 
-    client = genai.Client(api_key=settings.google_api_key)
-    response = client.models.generate_content(
-        model=settings.tts_model,
-        contents=f"Say this exactly: {text}",
-        config=types.GenerateContentConfig(
-            response_modalities=[types.Modality.AUDIO],
-        ),
-    )
-    for part in response.parts or []:
-        if part.inline_data and part.inline_data.data:
-            raw = part.inline_data.data
-            mime = getattr(part.inline_data, "mime_type", "") or ""
-            logger.info("TTS audio mime_type=%s bytes=%s", mime, len(raw))
-            if "pcm" in mime.lower() or "L16" in mime:
-                return _pcm_to_wav(raw), "audio/wav"
-            return raw, mime or "audio/wav"
-    return b"", "audio/wav"
+    body = {
+        "input": {"text": text},
+        "voice": {"languageCode": lang_code, "name": voice_name},
+        "audioConfig": {
+            "audioEncoding": "LINEAR16",
+            "sampleRateHertz": 24000,
+        },
+    }
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            f"https://texttospeech.googleapis.com/v1/text:synthesize?key={settings.tts_api_key}",
+            json=body,
+        )
+        if response.status_code == 403:
+            logger.error(
+                "Cloud Text-to-Speech API returned 403. "
+                "Make sure the API is enabled at: "
+                "https://console.cloud.google.com/apis/library/texttospeech.googleapis.com"
+            )
+            raise RuntimeError(
+                "Cloud Text-to-Speech API is not enabled for this API key. "
+                "Enable it at https://console.cloud.google.com/apis/library/texttospeech.googleapis.com"
+            )
+        response.raise_for_status()
+        data = response.json()
+
+    audio_b64 = data.get("audioContent", "")
+    if not audio_b64:
+        logger.warning("TTS returned empty audioContent")
+        return b"", "audio/wav"
+
+    raw = base64.b64decode(audio_b64)
+    logger.info("TTS audio bytes=%s voice=%s", len(raw), voice_name)
+    return _pcm_to_wav(raw), "audio/wav"
 
 
 async def get_interim_audio(settings: Settings, language: str) -> tuple[bytes, str] | None:
@@ -177,7 +231,7 @@ async def get_interim_audio(settings: Settings, language: str) -> tuple[bytes, s
     if phrase is None:
         phrase = await _translate_interim(settings, lang)
 
-    audio, mime = await synthesize_speech(settings, phrase)
+    audio, mime = await synthesize_speech(settings, phrase, lang)
     if audio:
         _save_to_disk(path, audio)
         result = (audio, mime)

@@ -226,7 +226,7 @@ async def _process_text(
         await ws.send_json({"type": "status", "state": "speaking"})
         t0 = perf_counter()
         try:
-            audio_bytes, mime_type = await synthesize_speech(settings, agent_text)
+            audio_bytes, mime_type = await synthesize_speech(settings, agent_text, language)
             get_tracker().add_tts(chars=len(agent_text))
             tts_elapsed = round((perf_counter() - t0) * 1000, 2)
             if audio_bytes:

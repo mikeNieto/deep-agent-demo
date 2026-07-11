@@ -10,6 +10,7 @@ requires-python = ">=3.13"
 dependencies = [
     "deepagents>=0.6.8",
     "fastapi>=0.136.3",
+    "httpx>=0.28.1",
     "langchain-google-genai>=3.1.0",
     "langgraph-checkpoint-sqlite>=3.1.0",
     "pydantic-settings>=2.14.1",

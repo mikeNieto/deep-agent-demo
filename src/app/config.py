@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8000, alias="API_PORT")
 
     google_api_key: str = Field(default="", alias="GOOGLE_API_KEY")
+    google_cloud_api_key: str = Field(default="", alias="GOOGLE_CLOUD_API_KEY")
+
+    @property
+    def tts_api_key(self) -> str:
+        return self.google_cloud_api_key or self.google_api_key
 
     deepagent_model: str = Field(
         default="gemini-2.5-flash",
@@ -30,11 +35,14 @@ class Settings(BaseSettings):
         default="gemini-2.5-flash",
         alias="STT_MODEL",
     )
-    tts_model: str = Field(
-        default="gemini-2.5-flash-preview-tts",
-        alias="TTS_MODEL",
+    tts_voice_en: str = Field(
+        default="en-US-Wavenet-F",
+        alias="TTS_VOICE_EN",
     )
-    tts_voice: str = Field(default="Puck", alias="TTS_VOICE")
+    tts_voice_es: str = Field(
+        default="es-ES-Wavenet-C",
+        alias="TTS_VOICE_ES",
+    )
 
     thinking_level: str = Field(default="", alias="THINKING_LEVEL")
     thinking_budget: int = Field(default=0, alias="THINKING_BUDGET")
