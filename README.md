@@ -67,7 +67,7 @@ Voces femeninas en ingles (US):
 - `en-US-Wavenet-H` — neutra
 
 Voces femeninas en espanol (Espana):
-- `en-US-Wavenet-C` *(no disponible para es-ES)*
+- `es-US-Wavenet-A` — femenina, media latina
 - `es-ES-Wavenet-C` — femenina, natural *(default)*
 - `es-ES-Wavenet-D` — femenina, alternativa
 - `es-ES-Wavenet-A` — femenina, clasica
