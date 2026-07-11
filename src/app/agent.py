@@ -53,6 +53,8 @@ async def web_search(query: str) -> str:
     from google import genai
     from google.genai import types
 
+    from app.usage import get_tracker
+
     client = genai.Client(api_key=get_settings().google_api_key)
     tools = [types.Tool(google_search=types.GoogleSearch())]
     response = client.models.generate_content(
@@ -60,6 +62,7 @@ async def web_search(query: str) -> str:
         contents=f"Search the web for: {query}\nReturn a detailed answer based on the search results.",
         config=types.GenerateContentConfig(tools=tools),
     )
+    get_tracker().add_web_search()
     return response.text or ""
 
 

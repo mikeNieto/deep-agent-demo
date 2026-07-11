@@ -19,6 +19,7 @@ from app.audio import (
     transcribe_audio,
 )
 from app.config import get_settings
+from app.usage import get_tracker
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ async def _send_interim(ws: WebSocket, settings, language: str) -> None:
             audio, mime = result
             await ws.send_json({"type": "audio_info", "mime_type": mime})
             await ws.send_bytes(audio)
+            get_tracker().add_tts(chars=15)
     except Exception as e:
         logger.warning("Interim audio failed: %s", e)
 
@@ -83,7 +85,9 @@ async def _handle_websocket(ws: WebSocket) -> None:
                         await ws.send_json({"type": "error", "message": f"STT error: {e}"})
                         audio_buffer.clear()
                         continue
+                    audio_dur = len(audio_buffer) / 32000.0
                     audio_buffer.clear()
+                    get_tracker().add_stt(audio_dur)
                     logger.info(
                         "STT completed elapsed_ms=%s text=%s lang=%s",
                         round((perf_counter() - t0) * 1000, 2),
@@ -123,6 +127,8 @@ async def _process_text(
     t0 = perf_counter()
     full_text = ""
     tool_interim_sent = False
+    agent_in_tokens = 0
+    agent_out_tokens = 0
 
     async for event in agent_graph.astream_events(
         {"messages": [{"role": "user", "content": text}]},
@@ -147,6 +153,16 @@ async def _process_text(
             preview = str(out)[:300]
             logger.info("Tool call ended tool=%s output=%s", name, preview)
 
+        if kind == "on_chat_model_end":
+            output = event.get("data", {}).get("output", {})
+            usage = getattr(output, "usage_metadata", None) or {}
+            if isinstance(usage, dict):
+                agent_in_tokens += usage.get("input_tokens", 0)
+                agent_out_tokens += usage.get("output_tokens", 0)
+            elif hasattr(usage, "get"):
+                agent_in_tokens += usage.get("input_tokens", 0) or 0  # type: ignore[operator]
+                agent_out_tokens += usage.get("output_tokens", 0) or 0  # type: ignore[operator]
+
         if kind == "on_chat_model_stream":
             chunk = event["data"]["chunk"]
             token = chunk.content if hasattr(chunk, "content") else ""
@@ -164,6 +180,8 @@ async def _process_text(
     agent_elapsed = round((perf_counter() - t0) * 1000, 2)
     agent_text = full_text.strip()
 
+    get_tracker().add_agent_tokens(input_tokens=agent_in_tokens, output_tokens=agent_out_tokens)
+
     logger.info(
         "Agent completed elapsed_ms=%s output_chars=%s",
         agent_elapsed,
@@ -175,6 +193,7 @@ async def _process_text(
         t0 = perf_counter()
         try:
             audio_bytes, mime_type = await synthesize_speech(settings, agent_text)
+            get_tracker().add_tts(chars=len(agent_text))
             tts_elapsed = round((perf_counter() - t0) * 1000, 2)
             if audio_bytes:
                 await ws.send_json({"type": "audio_info", "mime_type": mime_type})
@@ -193,6 +212,7 @@ async def _process_text(
 
     await ws.send_json({"type": "text", "content": agent_text})
     await ws.send_json({"type": "done"})
+    get_tracker().log_summary()
 
 
 @asynccontextmanager
