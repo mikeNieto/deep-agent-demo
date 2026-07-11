@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from contextlib import asynccontextmanager
@@ -104,29 +103,36 @@ async def _process_text(
     await ws.send_json({"type": "status", "state": "thinking"})
 
     t0 = perf_counter()
-    result = await agent_graph.ainvoke(
+    full_text = ""
+
+    async for event in agent_graph.astream_events(
         {"messages": [{"role": "user", "content": text}]},
         config={"configurable": {"thread_id": thread_id}},
-    )
-    agent_elapsed = round((perf_counter() - t0) * 1000, 2)
+        version="v2",
+    ):
+        kind = event.get("event")
+        if kind == "on_chat_model_stream":
+            chunk = event["data"]["chunk"]
+            token = chunk.content if hasattr(chunk, "content") else ""
+            if not token:
+                continue
+            if isinstance(token, list):
+                token = "".join(
+                    item.get("text", "") if isinstance(item, dict) else str(item)
+                    for item in token
+                )
+            token = str(token)
+            full_text += token
+            await ws.send_json({"type": "token", "content": token})
 
-    messages = result.get("messages", [])
-    final_message = messages[-1] if messages else None
-    content = getattr(final_message, "content", "") if final_message else ""
-    if isinstance(content, list):
-        content = "\n".join(
-            item.get("text", "") if isinstance(item, dict) else str(item)
-            for item in content
-        )
-    agent_text = str(content).strip()
+    agent_elapsed = round((perf_counter() - t0) * 1000, 2)
+    agent_text = full_text.strip()
 
     logger.info(
         "Agent completed elapsed_ms=%s output_chars=%s",
         agent_elapsed,
         len(agent_text),
     )
-
-    await ws.send_json({"type": "text", "content": agent_text})
 
     if agent_text:
         await ws.send_json({"type": "status", "state": "speaking"})
@@ -149,6 +155,7 @@ async def _process_text(
             logger.exception("TTS failed")
             await ws.send_json({"type": "error", "message": f"TTS error: {e}"})
 
+    await ws.send_json({"type": "text", "content": agent_text})
     await ws.send_json({"type": "done"})
 
 
