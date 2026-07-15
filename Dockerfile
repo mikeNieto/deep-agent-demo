@@ -9,7 +9,6 @@ COPY pyproject.toml uv.lock ./
 
 RUN uv sync --frozen --no-dev --no-install-project
 
-COPY README.md ./
 COPY memory/ ./memory/
 COPY skills/ ./skills/
 COPY src/ ./src/
