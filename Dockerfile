@@ -14,7 +14,7 @@ COPY skills/ ./skills/
 COPY src/ ./src/
 COPY static/ ./static/
 
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev
 
 RUN mkdir -p /app/data/audio
 
