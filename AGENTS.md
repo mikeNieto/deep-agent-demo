@@ -39,6 +39,7 @@ data/
   audio/          -- TTS output, audio uploads, interim cache (gitignored)
   sqlite/         -- Agent conversation checkpoints (gitignored)
   usage.json      -- Usage metrics (gitignored)
+  files/          -- Agent virtual filesystem backend (runtime, gitignored)
 tests/
   test_main.py    -- FastAPI TestClient tests
   test_agent.py   -- Tool unit tests (BTC price hits live API)

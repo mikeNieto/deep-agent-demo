@@ -25,6 +25,10 @@ tests/
 
 # Docs
 AGENTS.md
+README.md
+
+# Python version manager
+.python-version
 
 # Env (passed at runtime)
 .env
