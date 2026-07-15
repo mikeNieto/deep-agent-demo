@@ -158,6 +158,24 @@ async def _process_text(
     tool_interim_sent = False
     agent_in_tokens = 0
     agent_out_tokens = 0
+    last_tool_output = None
+
+    def _extract_tool_text(output) -> str | None:
+        if output is None:
+            return None
+        if hasattr(output, "content"):
+            content = output.content
+            if isinstance(content, list):
+                return " ".join(
+                    item.get("text", "") if isinstance(item, dict) else str(item)
+                    for item in content
+                ).strip()
+            return str(content).strip()
+        if isinstance(output, str):
+            return output.strip()
+        if isinstance(output, (dict, list)):
+            return json.dumps(output, ensure_ascii=False)
+        return str(output).strip()
 
     async for event in agent_graph.astream_events(
         {"messages": [{"role": "user", "content": text}]},
@@ -181,6 +199,9 @@ async def _process_text(
             out = data.get("output", "")
             preview = str(out)[:300]
             logger.info("Tool call ended tool=%s output=%s", name, preview)
+            extracted = _extract_tool_text(out)
+            if extracted:
+                last_tool_output = extracted
 
         if kind == "on_chat_model_end":
             output = event.get("data", {}).get("output", {})
@@ -210,7 +231,10 @@ async def _process_text(
     agent_text = full_text.strip()
 
     if not agent_text:
-        agent_text = _default_response(language)
+        if last_tool_output:
+            agent_text = last_tool_output
+        else:
+            agent_text = _default_response(language)
 
     get_tracker().add_agent_tokens(
         input_tokens=agent_in_tokens, output_tokens=agent_out_tokens
