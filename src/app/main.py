@@ -72,10 +72,19 @@ async def _send_audio_chunked(ws: WebSocket, wav_bytes: bytes) -> None:
     })
 
     offset = 0
+    chunk_count = 0
     while offset < len(pcm_data):
         chunk = pcm_data[offset : offset + CHUNK_SIZE]
         await ws.send_bytes(bytes(chunk))
         offset += CHUNK_SIZE
+        chunk_count += 1
+
+    logger.info(
+        "Audio chunks sent total_bytes=%s chunks=%s chunk_size=%s",
+        len(pcm_data),
+        chunk_count,
+        CHUNK_SIZE,
+    )
 
     await ws.send_json({"type": "audio_end"})
 
@@ -177,7 +186,7 @@ async def _process_text(
 
     t0 = perf_counter()
     full_text = ""
-    tool_interim_sent = False
+    interim_task = None
     agent_in_tokens = 0
     agent_out_tokens = 0
     last_tool_output = None
@@ -211,9 +220,8 @@ async def _process_text(
             data = event.get("data", {})
             inp = data.get("input", {})
             logger.info("Tool call started tool=%s input=%s", name, inp)
-            if not tool_interim_sent:
-                tool_interim_sent = True
-                asyncio.create_task(_send_interim(ws, settings, language))
+            if interim_task is None:
+                interim_task = asyncio.create_task(_send_interim(ws, settings, language))
 
         if kind == "on_tool_end":
             name = event.get("name", "unknown")
@@ -251,6 +259,12 @@ async def _process_text(
 
     agent_elapsed = round((perf_counter() - t0) * 1000, 2)
     agent_text = full_text.strip()
+
+    if interim_task is not None:
+        try:
+            await interim_task
+        except Exception:
+            pass
 
     if not agent_text:
         if last_tool_output:
