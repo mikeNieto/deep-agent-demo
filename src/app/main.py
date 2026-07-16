@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from app.agent import create_agent_graph
 from app.audio import (
     get_interim_audio,
+    parse_wav_header,
     synthesize_speech,
     transcribe_audio,
 )
@@ -57,13 +58,34 @@ def _is_transcription_error(text: str) -> bool:
     )
 
 
+CHUNK_SIZE = 32768
+
+
+async def _send_audio_chunked(ws: WebSocket, wav_bytes: bytes) -> None:
+    sample_rate, channels, bits, pcm_data = parse_wav_header(wav_bytes)
+
+    await ws.send_json({
+        "type": "audio_start",
+        "sample_rate": sample_rate,
+        "channels": channels,
+        "bits": bits,
+    })
+
+    offset = 0
+    while offset < len(pcm_data):
+        chunk = pcm_data[offset : offset + CHUNK_SIZE]
+        await ws.send_bytes(bytes(chunk))
+        offset += CHUNK_SIZE
+
+    await ws.send_json({"type": "audio_end"})
+
+
 async def _send_interim(ws: WebSocket, settings, language: str) -> None:
     try:
         result = await get_interim_audio(settings, language)
         if result:
-            audio, mime = result
-            await ws.send_json({"type": "audio_info", "mime_type": mime})
-            await ws.send_bytes(audio)
+            audio, _mime = result
+            await _send_audio_chunked(ws, audio)
             get_tracker().add_tts(chars=15)
     except Exception as e:
         logger.warning("Interim audio failed: %s", e)
@@ -250,17 +272,15 @@ async def _process_text(
         await ws.send_json({"type": "status", "state": "speaking"})
         t0 = perf_counter()
         try:
-            audio_bytes, mime_type = await synthesize_speech(settings, agent_text, language)
+            audio_bytes, _mime_type = await synthesize_speech(settings, agent_text, language)
             get_tracker().add_tts(chars=len(agent_text))
             tts_elapsed = round((perf_counter() - t0) * 1000, 2)
             if audio_bytes:
-                await ws.send_json({"type": "audio_info", "mime_type": mime_type})
-                await ws.send_bytes(audio_bytes)
+                await _send_audio_chunked(ws, audio_bytes)
                 logger.info(
-                    "TTS completed elapsed_ms=%s audio_bytes=%s mime=%s",
+                    "TTS completed elapsed_ms=%s audio_bytes=%s",
                     tts_elapsed,
                     len(audio_bytes),
-                    mime_type,
                 )
             else:
                 logger.warning("TTS returned empty audio")

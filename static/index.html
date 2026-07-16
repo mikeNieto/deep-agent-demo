@@ -190,7 +190,9 @@
   let isRecording = false;
   let currentAgentDiv = null;
   let reconnecting = false;
-  let pendingMimeType = 'audio/wav';
+  let audioPcmChunks = [];
+  let audioMeta = null;
+  let receivingAudio = false;
 
   const messagesEl = document.getElementById('messages');
   const textInput = document.getElementById('text-input');
@@ -234,8 +236,48 @@
     return div;
   }
 
-  function addAudioMessage(audioBytes) {
-    const blob = new Blob([audioBytes], { type: pendingMimeType });
+  function pcmToWav(pcmData, sampleRate, channels, bits) {
+    const byteRate = sampleRate * channels * (bits / 8);
+    const blockAlign = channels * (bits / 8);
+    const dataSize = pcmData.length;
+    const buffer = new ArrayBuffer(44 + dataSize);
+    const view = new DataView(buffer);
+
+    function writeString(offset, str) {
+      for (let i = 0; i < str.length; i++) {
+        view.setUint8(offset + i, str.charCodeAt(i));
+      }
+    }
+
+    writeString(0, 'RIFF');
+    view.setUint32(4, 36 + dataSize, true);
+    writeString(8, 'WAVE');
+    writeString(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, channels, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, byteRate, true);
+    view.setUint16(32, blockAlign, true);
+    view.setUint16(34, bits, true);
+    writeString(36, 'data');
+    view.setUint32(40, dataSize, true);
+
+    const u8 = new Uint8Array(buffer);
+    u8.set(pcmData, 44);
+    return buffer;
+  }
+
+  function playPcmAudio(chunks, meta) {
+    const totalLength = chunks.reduce(function(sum, c) { return sum + c.length; }, 0);
+    const pcmData = new Uint8Array(totalLength);
+    let offset = 0;
+    for (let i = 0; i < chunks.length; i++) {
+      pcmData.set(chunks[i], offset);
+      offset += chunks[i].length;
+    }
+    const wav = pcmToWav(pcmData, meta.sampleRate, meta.channels, meta.bits);
+    const blob = new Blob([wav], { type: 'audio/wav' });
     const url = URL.createObjectURL(blob);
     const div = document.createElement('div');
     div.className = 'msg agent audio-msg';
@@ -322,14 +364,29 @@
 
     ws.onmessage = function(event) {
       if (event.data instanceof ArrayBuffer) {
-        addAudioMessage(new Uint8Array(event.data));
-        sendBtn.disabled = false;
+        if (receivingAudio) {
+          audioPcmChunks.push(new Uint8Array(event.data));
+        }
         return;
       }
       try {
         const data = JSON.parse(event.data);
-        if (data.type === 'audio_info') {
-          pendingMimeType = data.mime_type || 'audio/wav';
+        if (data.type === 'audio_start') {
+          receivingAudio = true;
+          audioPcmChunks = [];
+          audioMeta = {
+            sampleRate: data.sample_rate,
+            channels: data.channels,
+            bits: data.bits,
+          };
+        } else if (data.type === 'audio_end') {
+          receivingAudio = false;
+          if (audioPcmChunks.length > 0 && audioMeta) {
+            playPcmAudio(audioPcmChunks, audioMeta);
+          }
+          audioPcmChunks = [];
+          audioMeta = null;
+          sendBtn.disabled = false;
         } else if (data.type === 'status') {
           if (data.state === 'transcribing') {
             addMessage('status', 'Transcribing...', 'status');

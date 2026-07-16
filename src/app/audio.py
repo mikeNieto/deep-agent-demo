@@ -87,6 +87,29 @@ def _pcm_to_wav(pcm_data: bytes, sample_rate: int = 24000, channels: int = 1, bi
     return header + pcm_data
 
 
+def parse_wav_header(wav_bytes: bytes) -> tuple[int, int, int, bytes]:
+    if len(wav_bytes) < 44:
+        raise ValueError("WAV data too short")
+    if wav_bytes[:4] != b"RIFF":
+        raise ValueError("Not a valid WAV file")
+
+    sample_rate = int.from_bytes(wav_bytes[24:28], "little")
+    channels = wav_bytes[22] | (wav_bytes[23] << 8)
+    bits = wav_bytes[34] | (wav_bytes[35] << 8)
+
+    offset = 12
+    while offset < len(wav_bytes) - 8:
+        chunk_id = wav_bytes[offset : offset + 4]
+        chunk_size = int.from_bytes(wav_bytes[offset + 4 : offset + 8], "little")
+        if chunk_id == b"data":
+            data_start = offset + 8
+            pcm_data = wav_bytes[data_start : data_start + chunk_size]
+            return sample_rate, channels, bits, pcm_data
+        offset += 8 + chunk_size
+
+    return sample_rate, channels, bits, wav_bytes[44:]
+
+
 async def transcribe_audio(
     settings: Settings,
     audio_bytes: bytes,
