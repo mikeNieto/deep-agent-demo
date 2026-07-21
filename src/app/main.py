@@ -61,7 +61,11 @@ def _is_transcription_error(text: str) -> bool:
 CHUNK_SIZE = 32768
 
 
-async def _send_audio_chunked(ws: WebSocket, wav_bytes: bytes) -> None:
+async def _send_audio_chunked(
+    ws: WebSocket,
+    wav_bytes: bytes,
+    interleaved_msgs: list[dict] | None = None,
+) -> None:
     sample_rate, channels, bits, pcm_data = parse_wav_header(wav_bytes)
 
     await ws.send_json({
@@ -73,11 +77,27 @@ async def _send_audio_chunked(ws: WebSocket, wav_bytes: bytes) -> None:
 
     offset = 0
     chunk_count = 0
+    total_msgs = len(interleaved_msgs) if interleaved_msgs else 0
+    total_chunks = max((len(pcm_data) + CHUNK_SIZE - 1) // CHUNK_SIZE, 1)
+    msg_index = 0
+
     while offset < len(pcm_data):
         chunk = pcm_data[offset : offset + CHUNK_SIZE]
         await ws.send_bytes(bytes(chunk))
         offset += CHUNK_SIZE
         chunk_count += 1
+
+        if interleaved_msgs and total_msgs > 0:
+            base = total_msgs // total_chunks
+            extra = 1 if chunk_count <= total_msgs % total_chunks else 0
+            for _ in range(base + extra):
+                if msg_index < total_msgs:
+                    await ws.send_json(interleaved_msgs[msg_index])
+                    msg_index += 1
+
+    while msg_index < total_msgs:
+        await ws.send_json(interleaved_msgs[msg_index])
+        msg_index += 1
 
     logger.info(
         "Audio chunks sent total_bytes=%s chunks=%s chunk_size=%s",
@@ -190,6 +210,7 @@ async def _process_text(
     agent_in_tokens = 0
     agent_out_tokens = 0
     last_tool_output = None
+    token_msgs: list[dict] = []
 
     def _extract_tool_text(output) -> str | None:
         if output is None:
@@ -255,7 +276,7 @@ async def _process_text(
                 )
             token = str(token)
             full_text += token
-            await ws.send_json({"type": "token", "content": token})
+            token_msgs.append({"type": "token", "content": token})
 
     agent_elapsed = round((perf_counter() - t0) * 1000, 2)
     agent_text = full_text.strip()
@@ -285,24 +306,30 @@ async def _process_text(
     if agent_text:
         await ws.send_json({"type": "status", "state": "speaking"})
         t0 = perf_counter()
+        audio_bytes = None
         try:
             audio_bytes, _mime_type = await synthesize_speech(settings, agent_text, language)
             get_tracker().add_tts(chars=len(agent_text))
-            tts_elapsed = round((perf_counter() - t0) * 1000, 2)
-            if audio_bytes:
-                await _send_audio_chunked(ws, audio_bytes)
-                logger.info(
-                    "TTS completed elapsed_ms=%s audio_bytes=%s",
-                    tts_elapsed,
-                    len(audio_bytes),
-                )
-            else:
-                logger.warning("TTS returned empty audio")
         except Exception as e:
             logger.exception("TTS failed")
             await ws.send_json({"type": "error", "message": f"TTS error: {e}"})
 
-    await ws.send_json({"type": "text", "content": agent_text})
+        if audio_bytes:
+            tts_elapsed = round((perf_counter() - t0) * 1000, 2)
+            interleaved = list(token_msgs)
+            interleaved.append({"type": "text", "content": agent_text})
+            await _send_audio_chunked(ws, audio_bytes, interleaved_msgs=interleaved)
+            logger.info(
+                "TTS completed elapsed_ms=%s audio_bytes=%s",
+                tts_elapsed,
+                len(audio_bytes),
+            )
+        else:
+            logger.warning("TTS returned empty audio")
+            for msg in token_msgs:
+                await ws.send_json(msg)
+            await ws.send_json({"type": "text", "content": agent_text})
+
     await ws.send_json({"type": "done"})
     get_tracker().log_summary()
 
