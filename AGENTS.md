@@ -60,12 +60,56 @@ All env vars in `.env` (see `.env.example`). Key ones:
 - `API_HOST` / `API_PORT` — server bind (default: `0.0.0.0:8000`)
 - `AUDIO_TEMP_DIR` — audio temp dir (default: `data/audio`)
 
+## Audio streaming protocol (WebSocket outbound)
+
+The server sends audio to the ESP32 using a chunked PCM protocol with interleaved
+text messages.  Designed for ESP32 with a ~512 KB ring buffer at 24000 Hz mono 16-bit.
+
+### Message sequence (per agent response)
+
+```
+{"type":"audio_start","sample_rate":24000,"channels":1,"bits":16}
+[binary chunk 32 KB]           # raw PCM, little-endian
+{"type":"token","content":"..."}  # interleaved text tokens
+[binary chunk 32 KB]
+{"type":"token","content":"..."}
+... repeated ...
+{"type":"text","content":"full response"}
+{"type":"audio_end"}
+{"type":"done"}
+```
+
+### Pacing / backpressure
+
+- **No artificial delays** — chunks are sent in a tight loop via `ws.send_bytes()`.
+- **TCP backpressure** is the pacing mechanism: when the ESP32 ring buffer fills,
+  its TCP receive window closes and `send_bytes()` blocks until the ESP32
+  consumes data (point 4 of the original design).
+- The initial burst fills the ESP32 buffer (~10 chunks for 512 KB); after that,
+  TCP flow control naturally matches the ESP32 playback rate (~48 KB/s).
+
+### Interleaving
+
+- Text tokens (`{"type":"token",...}`) and the final `{"type":"text",...}` are
+  buffered during LLM streaming and distributed evenly across PCM chunks inside
+  `_send_audio_chunked()`.
+- This guarantees JSON messages are never trapped behind large amounts of binary
+  data in the server's TCP send buffer.
+- On TTS failure or empty audio, buffered tokens fall back to immediate send.
+
+### Constants
+
+| Constant | Value | Notes |
+|---|---|---|
+| `CHUNK_SIZE` | 32768 (32 KB) | ~0.68 s of audio at 24 kHz mono 16-bit |
+| `bytes_per_second` | 48000 | `sample_rate × channels × (bits // 8)` |
+
 ## Architecture notes
 
 - Agent graph uses `deepagents.create_deep_agent` with `ChatGoogleGenerativeAI`, `CompositeBackend` (FilesystemBackend in virtual_mode), and `AsyncSqliteSaver`
 - Chat model created in `create_chat_model()` which auto-detects Gemini version for thinking_level vs thinking_budget
 - `web_search` tool uses `google-genai` SDK directly (not via LangChain) for Google Search grounding
-- WebSocket flow: audio chunks (PCM 16-bit 16kHz mono WAV) -> STT (Gemini multimodal, returns JSON with text + language) -> Agent -> TTS (Cloud Text-to-Speech REST API) -> WAV audio back
+- WebSocket flow: audio chunks (PCM 16-bit 16kHz mono WAV) -> STT (Gemini multimodal, returns JSON with text + language) -> Agent -> TTS (Cloud Text-to-Speech REST API, 24000 Hz LINEAR16) -> PCM chunks to ESP32 via `_send_audio_chunked()`
 - TTS response is cleaned with `_clean_for_tts()` — strips markdown, emojis, code blocks, links before sending to TTS
 - No conversation confirmation step for audio input
 - Agent responses auto-detect user language; system prompt forbids markdown, emojis, greetings, farewells
